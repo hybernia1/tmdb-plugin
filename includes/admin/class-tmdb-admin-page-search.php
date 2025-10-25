@@ -562,7 +562,7 @@ class TMDB_Admin_Page_Search {
             [
                 'api_key'            => $api_key,
                 'language'           => $language,
-                'append_to_response' => 'credits,videos,keywords,websites,external_ids,images',
+                'append_to_response' => 'credits,videos,keywords,websites,external_ids,images,alternative_titles',
                 'include_image_language' => self::build_language_list( $language, $fallback_language, true ),
                 'include_video_language' => self::build_language_list( $language, $fallback_language, true ),
             ]
@@ -581,7 +581,7 @@ class TMDB_Admin_Page_Search {
                 [
                     'api_key'            => $api_key,
                     'language'           => $fallback_language,
-                    'append_to_response' => 'credits,videos,keywords,websites,external_ids,images',
+                    'append_to_response' => 'credits,videos,keywords,websites,external_ids,images,alternative_titles',
                     'include_image_language' => self::build_language_list( $fallback_language, $language, true ),
                     'include_video_language' => self::build_language_list( $fallback_language, $language, true ),
                 ]
@@ -680,11 +680,49 @@ class TMDB_Admin_Page_Search {
         update_post_meta( $post_id, 'TMDB_original_title', $original_title );
         update_post_meta( $post_id, 'TMDB_tagline', isset( $movie_data['tagline'] ) ? sanitize_text_field( $movie_data['tagline'] ) : '' );
         update_post_meta( $post_id, 'TMDB_release_date', isset( $movie_data['release_date'] ) ? sanitize_text_field( $movie_data['release_date'] ) : '' );
-        update_post_meta( $post_id, 'TMDB_runtime', isset( $movie_data['runtime'] ) ? (int) $movie_data['runtime'] : 0 );
+
+        $resolved_runtime = self::resolve_movie_runtime( $movie_data, $fallback_movie );
+        update_post_meta( $post_id, 'TMDB_runtime', $resolved_runtime );
         update_post_meta( $post_id, 'TMDB_vote_average', isset( $movie_data['vote_average'] ) ? (float) $movie_data['vote_average'] : 0 );
         update_post_meta( $post_id, 'TMDB_vote_count', isset( $movie_data['vote_count'] ) ? (int) $movie_data['vote_count'] : 0 );
-        update_post_meta( $post_id, 'TMDB_homepage', isset( $movie_data['homepage'] ) ? esc_url_raw( $movie_data['homepage'] ) : '' );
+        update_post_meta( $post_id, 'TMDB_homepage', self::resolve_homepage_url( $movie_data, $fallback_movie ) );
         update_post_meta( $post_id, 'TMDB_status', isset( $movie_data['status'] ) ? sanitize_text_field( $movie_data['status'] ) : '' );
+
+        $origin_countries = self::sanitize_origin_countries( $movie_data['origin_country'] ?? [] );
+
+        if ( empty( $origin_countries ) && null !== $fallback_movie ) {
+            $origin_countries = self::sanitize_origin_countries( $fallback_movie['origin_country'] ?? [] );
+        }
+
+        if ( empty( $origin_countries ) ) {
+            delete_post_meta( $post_id, 'TMDB_origin_countries' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_origin_countries', $origin_countries );
+        }
+
+        $spoken_languages = self::sanitize_spoken_languages( $movie_data['spoken_languages'] ?? [] );
+
+        if ( empty( $spoken_languages ) && null !== $fallback_movie ) {
+            $spoken_languages = self::sanitize_spoken_languages( $fallback_movie['spoken_languages'] ?? [] );
+        }
+
+        if ( empty( $spoken_languages ) ) {
+            delete_post_meta( $post_id, 'TMDB_spoken_languages' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_spoken_languages', $spoken_languages );
+        }
+
+        $alternative_titles = self::sanitize_alternative_titles( $movie_data['alternative_titles'] ?? [] );
+
+        if ( empty( $alternative_titles ) && null !== $fallback_movie ) {
+            $alternative_titles = self::sanitize_alternative_titles( $fallback_movie['alternative_titles'] ?? [] );
+        }
+
+        if ( empty( $alternative_titles ) ) {
+            delete_post_meta( $post_id, 'TMDB_alternative_titles' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_alternative_titles', $alternative_titles );
+        }
 
         $collection_data = self::prepare_collection_data( isset( $movie_data['belongs_to_collection'] ) ? $movie_data['belongs_to_collection'] : null );
 
@@ -1814,6 +1852,187 @@ class TMDB_Admin_Page_Search {
             }
 
             $sanitized[ $sanitized_key ] = $sanitized_value;
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * Resolves the runtime for the imported movie using fallback data when available.
+     *
+     * @param array<string, mixed>      $movie_data     Primary movie payload.
+     * @param array<string, mixed>|null $fallback_movie Optional fallback payload.
+     */
+    private static function resolve_movie_runtime( array $movie_data, ?array $fallback_movie ): int {
+        $runtime = isset( $movie_data['runtime'] ) ? (int) $movie_data['runtime'] : 0;
+
+        if ( $runtime > 0 || null === $fallback_movie ) {
+            return $runtime;
+        }
+
+        return isset( $fallback_movie['runtime'] ) ? max( 0, (int) $fallback_movie['runtime'] ) : 0;
+    }
+
+    /**
+     * Resolves the homepage URL for the movie using fallback data when required.
+     *
+     * @param array<string, mixed>      $movie_data     Primary movie payload.
+     * @param array<string, mixed>|null $fallback_movie Optional fallback payload.
+     */
+    private static function resolve_homepage_url( array $movie_data, ?array $fallback_movie ): string {
+        $homepage = isset( $movie_data['homepage'] ) ? esc_url_raw( (string) $movie_data['homepage'] ) : '';
+
+        if ( '' !== $homepage || null === $fallback_movie ) {
+            return $homepage;
+        }
+
+        if ( isset( $fallback_movie['homepage'] ) ) {
+            $fallback_homepage = esc_url_raw( (string) $fallback_movie['homepage'] );
+
+            if ( '' !== $fallback_homepage ) {
+                return $fallback_homepage;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Sanitizes the list of origin countries returned from TMDB.
+     *
+     * @param mixed $countries Raw origin country payload from TMDB.
+     *
+     * @return array<int, string>
+     */
+    private static function sanitize_origin_countries( $countries ): array {
+        if ( ! is_array( $countries ) ) {
+            return [];
+        }
+
+        $sanitized = [];
+
+        foreach ( $countries as $country ) {
+            if ( ! is_scalar( $country ) ) {
+                continue;
+            }
+
+            $code = strtoupper( sanitize_text_field( (string) $country ) );
+
+            if ( '' === $code ) {
+                continue;
+            }
+
+            $sanitized[] = $code;
+        }
+
+        if ( empty( $sanitized ) ) {
+            return [];
+        }
+
+        return array_values( array_unique( $sanitized ) );
+    }
+
+    /**
+     * Sanitizes the spoken language payload for storage in post meta.
+     *
+     * @param mixed $languages Raw spoken language payload.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private static function sanitize_spoken_languages( $languages ): array {
+        if ( ! is_array( $languages ) ) {
+            return [];
+        }
+
+        $sanitized = [];
+
+        foreach ( $languages as $language ) {
+            if ( ! is_array( $language ) ) {
+                continue;
+            }
+
+            $entry = [];
+
+            if ( isset( $language['iso_639_1'] ) && '' !== $language['iso_639_1'] ) {
+                $entry['iso_639_1'] = sanitize_text_field( (string) $language['iso_639_1'] );
+            }
+
+            if ( isset( $language['english_name'] ) && '' !== $language['english_name'] ) {
+                $entry['english_name'] = sanitize_text_field( (string) $language['english_name'] );
+            }
+
+            if ( isset( $language['name'] ) && '' !== $language['name'] ) {
+                $entry['name'] = sanitize_text_field( (string) $language['name'] );
+            }
+
+            if ( empty( $entry ) ) {
+                continue;
+            }
+
+            $sanitized[] = $entry;
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * Sanitizes the alternative title payload provided by TMDB.
+     *
+     * @param mixed $payload Raw alternative title payload.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private static function sanitize_alternative_titles( $payload ): array {
+        if ( is_array( $payload ) && isset( $payload['titles'] ) && is_array( $payload['titles'] ) ) {
+            $payload = $payload['titles'];
+        }
+
+        if ( ! is_array( $payload ) ) {
+            return [];
+        }
+
+        $sanitized = [];
+        $seen       = [];
+
+        foreach ( $payload as $title ) {
+            if ( ! is_array( $title ) ) {
+                continue;
+            }
+
+            $label = isset( $title['title'] ) ? sanitize_text_field( (string) $title['title'] ) : '';
+
+            if ( '' === $label ) {
+                continue;
+            }
+
+            $entry = [
+                'title' => $label,
+            ];
+
+            if ( isset( $title['iso_3166_1'] ) && '' !== $title['iso_3166_1'] ) {
+                $entry['iso_3166_1'] = strtoupper( sanitize_text_field( (string) $title['iso_3166_1'] ) );
+            }
+
+            if ( isset( $title['iso_639_1'] ) && '' !== $title['iso_639_1'] ) {
+                $entry['iso_639_1'] = sanitize_text_field( (string) $title['iso_639_1'] );
+            }
+
+            if ( isset( $title['type'] ) && '' !== $title['type'] ) {
+                $entry['type'] = sanitize_text_field( (string) $title['type'] );
+            }
+
+            $hash = wp_json_encode( $entry );
+
+            if ( ! is_string( $hash ) ) {
+                continue;
+            }
+
+            if ( isset( $seen[ $hash ] ) ) {
+                continue;
+            }
+
+            $seen[ $hash ] = true;
+            $sanitized[]   = $entry;
         }
 
         return $sanitized;
