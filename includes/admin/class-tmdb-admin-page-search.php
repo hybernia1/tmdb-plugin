@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class TMDB_Admin_Page_Search {
     private const MENU_SLUG              = 'tmdb-plugin-search';
-    private const IMAGE_BASE_URL         = 'https://image.tmdb.org/t/p/w185';
+    private const POSTER_BASE_URL        = 'https://image.tmdb.org/t/p/';
     private const ORIGINAL_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
 
     /**
@@ -153,7 +153,7 @@ class TMDB_Admin_Page_Search {
                             <?php if ( '' !== $result['poster_path'] ) : ?>
                                 <figure class="tmdb-plugin-search__poster">
                                     <img
-                                        src="<?php echo esc_url( trailingslashit( self::IMAGE_BASE_URL ) . ltrim( $result['poster_path'], '/' ) ); ?>"
+                                        src="<?php echo esc_url( self::build_poster_url( $result['poster_path'] ) ); ?>"
                                         alt="<?php echo esc_attr( sprintf( __( 'Poster for %s', 'tmdb-plugin' ), $result['title'] ? $result['title'] : $result['original_title'] ) ); ?>"
                                         loading="lazy"
                                     />
@@ -227,10 +227,22 @@ class TMDB_Admin_Page_Search {
                                         <input type="hidden" name="movie_id" value="<?php echo esc_attr( $result['id'] ); ?>" />
                                         <input type="hidden" name="query" value="<?php echo esc_attr( $initial_query ); ?>" />
                                         <input type="hidden" name="paged" value="<?php echo esc_attr( $current_page ); ?>" />
+                                        <?php $button_label = $result['existing_post_id'] ? __( 'Update movie', 'tmdb-plugin' ) : __( 'Import movie', 'tmdb-plugin' ); ?>
                                         <button type="submit" class="button button-secondary">
-                                            <?php esc_html_e( 'Import movie', 'tmdb-plugin' ); ?>
+                                            <?php echo esc_html( $button_label ); ?>
                                         </button>
                                     </form>
+                                    <?php if ( $result['existing_post_id'] ) :
+                                        $edit_link = get_edit_post_link( (int) $result['existing_post_id'] );
+                                        if ( $edit_link ) :
+                                            ?>
+                                            <a class="button-link tmdb-plugin-search__edit-link" href="<?php echo esc_url( $edit_link ); ?>">
+                                                <?php esc_html_e( 'Edit existing movie', 'tmdb-plugin' ); ?>
+                                            </a>
+                                            <?php
+                                        endif;
+                                    endif;
+                                    ?>
                                 </div>
                             </div>
                         </li>
@@ -493,9 +505,10 @@ class TMDB_Admin_Page_Search {
             }
 
             $vote_count = isset( $result['vote_count'] ) ? (int) $result['vote_count'] : 0;
+            $movie_id   = (int) $result['id'];
 
             $formatted[] = [
-                'id'             => (int) $result['id'],
+                'id'             => $movie_id,
                 'title'          => isset( $result['title'] ) ? sanitize_text_field( $result['title'] ) : '',
                 'original_title' => isset( $result['original_title'] ) ? sanitize_text_field( $result['original_title'] ) : '',
                 'overview'       => isset( $result['overview'] ) ? wp_trim_words( wp_strip_all_tags( $result['overview'] ), 40 ) : '',
@@ -504,6 +517,7 @@ class TMDB_Admin_Page_Search {
                 'vote_count'     => $vote_count,
                 'poster_path'    => isset( $result['poster_path'] ) ? sanitize_text_field( ltrim( (string) $result['poster_path'], '/' ) ) : '',
                 'language'       => isset( $result['original_language'] ) ? sanitize_text_field( $result['original_language'] ) : '',
+                'existing_post_id'=> self::get_existing_movie_post_id( $movie_id ),
             ];
         }
 
@@ -532,7 +546,7 @@ class TMDB_Admin_Page_Search {
             [
                 'api_key'            => $api_key,
                 'language'           => $language,
-                'append_to_response' => 'credits',
+                'append_to_response' => 'credits,videos,keywords',
             ]
         );
 
@@ -620,13 +634,26 @@ class TMDB_Admin_Page_Search {
 
         update_post_meta( $post_id, 'TMDB_poster_path', $poster_path );
 
-        $cast_info  = self::import_cast( isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [] );
-        $crew_info  = self::import_crew( isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [] );
-        $genre_info = self::import_genres( isset( $movie_data['genres'] ) && is_array( $movie_data['genres'] ) ? $movie_data['genres'] : [] );
+        $cast_info   = self::import_cast( isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [] );
+        $crew_info   = self::import_crew( isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [] );
+        $genre_info  = self::import_genres( isset( $movie_data['genres'] ) && is_array( $movie_data['genres'] ) ? $movie_data['genres'] : [] );
+        $keyword_raw = [];
+
+        if ( isset( $movie_data['keywords'] ) && is_array( $movie_data['keywords'] ) ) {
+            if ( isset( $movie_data['keywords']['keywords'] ) && is_array( $movie_data['keywords']['keywords'] ) ) {
+                $keyword_raw = $movie_data['keywords']['keywords'];
+            } elseif ( isset( $movie_data['keywords']['results'] ) && is_array( $movie_data['keywords']['results'] ) ) {
+                $keyword_raw = $movie_data['keywords']['results'];
+            }
+        }
+
+        $keyword_info = self::import_keywords( $keyword_raw );
+        $trailer_info = self::extract_trailer( isset( $movie_data['videos']['results'] ) && is_array( $movie_data['videos']['results'] ) ? $movie_data['videos']['results'] : [] );
 
         wp_set_object_terms( $post_id, $cast_info['term_ids'], TMDB_Taxonomies::ACTOR, false );
         wp_set_object_terms( $post_id, $crew_info['term_ids'], TMDB_Taxonomies::DIRECTOR, false );
         wp_set_object_terms( $post_id, $genre_info['term_ids'], TMDB_Taxonomies::GENRE, false );
+        wp_set_object_terms( $post_id, $keyword_info['term_ids'], TMDB_Taxonomies::KEYWORD, false );
 
         update_post_meta( $post_id, 'TMDB_actor_ids', $cast_info['term_ids'] );
         update_post_meta( $post_id, 'TMDB_cast', $cast_info['cast'] );
@@ -634,6 +661,14 @@ class TMDB_Admin_Page_Search {
         update_post_meta( $post_id, 'TMDB_directors', $crew_info['directors'] );
         update_post_meta( $post_id, 'TMDB_genre_ids', $genre_info['term_ids'] );
         update_post_meta( $post_id, 'TMDB_genres', $genre_info['genres'] );
+        update_post_meta( $post_id, 'TMDB_keyword_ids', $keyword_info['term_ids'] );
+        update_post_meta( $post_id, 'TMDB_keywords', $keyword_info['keywords'] );
+
+        if ( empty( $trailer_info ) ) {
+            delete_post_meta( $post_id, 'TMDB_trailer' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_trailer', $trailer_info );
+        }
 
         return [
             'post_id' => $post_id,
@@ -658,7 +693,7 @@ class TMDB_Admin_Page_Search {
             }
         );
 
-        foreach ( array_slice( $cast, 0, 10 ) as $member ) {
+        foreach ( $cast as $member ) {
             if ( ! is_array( $member ) || empty( $member['name'] ) ) {
                 continue;
             }
@@ -731,6 +766,113 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
+     * Imports TMDB keywords as taxonomy terms.
+     *
+     * @param array<int, array<string, mixed>> $keywords Keywords payload.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private static function import_keywords( array $keywords ): array {
+        $term_ids = [];
+        $stored   = [];
+
+        foreach ( $keywords as $keyword ) {
+            if ( ! is_array( $keyword ) || empty( $keyword['name'] ) ) {
+                continue;
+            }
+
+            $name    = sanitize_text_field( $keyword['name'] );
+            $tmdb_id = isset( $keyword['id'] ) ? (int) $keyword['id'] : 0;
+            $term_id = self::upsert_related_term( TMDB_Taxonomies::KEYWORD, $tmdb_id, $name );
+
+            if ( $term_id ) {
+                $term_ids[] = $term_id;
+            }
+
+            $stored[] = [
+                'name' => $name,
+            ];
+        }
+
+        return [
+            'term_ids' => array_map( 'intval', array_unique( $term_ids ) ),
+            'keywords' => $stored,
+        ];
+    }
+
+    /**
+     * Extracts the most relevant trailer from a list of TMDB videos.
+     *
+     * @param array<int, array<string, mixed>> $videos List of video payloads.
+     *
+     * @return array<string, mixed>
+     */
+    private static function extract_trailer( array $videos ): array {
+        if ( empty( $videos ) ) {
+            return [];
+        }
+
+        $trailers = [];
+
+        foreach ( $videos as $video ) {
+            if ( ! is_array( $video ) ) {
+                continue;
+            }
+
+            $type = isset( $video['type'] ) ? sanitize_text_field( $video['type'] ) : '';
+
+            if ( 'Trailer' !== $type ) {
+                continue;
+            }
+
+            $trailers[] = [
+                'name'         => isset( $video['name'] ) ? sanitize_text_field( $video['name'] ) : '',
+                'key'          => isset( $video['key'] ) ? sanitize_text_field( $video['key'] ) : '',
+                'site'         => isset( $video['site'] ) ? sanitize_text_field( $video['site'] ) : '',
+                'type'         => $type,
+                'official'     => ! empty( $video['official'] ),
+                'published_at' => isset( $video['published_at'] ) ? sanitize_text_field( $video['published_at'] ) : '',
+            ];
+        }
+
+        if ( empty( $trailers ) ) {
+            return [];
+        }
+
+        $preferred = null;
+
+        foreach ( $trailers as $trailer ) {
+            if ( 'YouTube' === $trailer['site'] && $trailer['official'] ) {
+                $preferred = $trailer;
+                break;
+            }
+        }
+
+        if ( null === $preferred ) {
+            foreach ( $trailers as $trailer ) {
+                if ( 'YouTube' === $trailer['site'] ) {
+                    $preferred = $trailer;
+                    break;
+                }
+            }
+        }
+
+        if ( null === $preferred ) {
+            $preferred = $trailers[0];
+        }
+
+        $url = '';
+
+        if ( 'YouTube' === $preferred['site'] && '' !== $preferred['key'] ) {
+            $url = sprintf( 'https://www.youtube.com/watch?v=%s', rawurlencode( $preferred['key'] ) );
+        }
+
+        $preferred['url'] = '' !== $url ? esc_url_raw( $url ) : '';
+
+        return $preferred;
+    }
+
+    /**
      * Imports TMDB genres as taxonomy terms.
      *
      * @param array<int, array<string, mixed>> $genres Genres payload.
@@ -778,6 +920,7 @@ class TMDB_Admin_Page_Search {
         }
 
         $term_id = 0;
+        $slug    = self::generate_term_slug( $taxonomy, $tmdb_id, $name );
 
         if ( $tmdb_id > 0 ) {
             $existing_by_meta = get_terms(
@@ -809,7 +952,13 @@ class TMDB_Admin_Page_Search {
         }
 
         if ( 0 === $term_id ) {
-            $created = wp_insert_term( $name, $taxonomy );
+            $insert_args = [];
+
+            if ( '' !== $slug ) {
+                $insert_args['slug'] = $slug;
+            }
+
+            $created = wp_insert_term( $name, $taxonomy, $insert_args );
 
             if ( is_wp_error( $created ) ) {
                 return 0;
@@ -817,7 +966,13 @@ class TMDB_Admin_Page_Search {
 
             $term_id = (int) $created['term_id'];
         } else {
-            $updated = wp_update_term( $term_id, $taxonomy, [ 'name' => $name ] );
+            $update_args = [ 'name' => $name ];
+
+            if ( '' !== $slug ) {
+                $update_args['slug'] = $slug;
+            }
+
+            $updated = wp_update_term( $term_id, $taxonomy, $update_args );
 
             if ( ! is_wp_error( $updated ) && isset( $updated['term_id'] ) ) {
                 $term_id = (int) $updated['term_id'];
@@ -829,6 +984,21 @@ class TMDB_Admin_Page_Search {
         }
 
         return $term_id;
+    }
+
+    /**
+     * Generates a slug for related taxonomy terms ensuring TMDB identifiers are included when required.
+     */
+    private static function generate_term_slug( string $taxonomy, int $tmdb_id, string $name ): string {
+        if ( '' === $name ) {
+            return '';
+        }
+
+        if ( $tmdb_id > 0 && in_array( $taxonomy, [ TMDB_Taxonomies::ACTOR, TMDB_Taxonomies::DIRECTOR ], true ) ) {
+            return sanitize_title( $tmdb_id . '-' . $name );
+        }
+
+        return sanitize_title( $name );
     }
 
     /**
@@ -928,6 +1098,73 @@ class TMDB_Admin_Page_Search {
             'success' => true,
             'data'    => $decoded,
         ];
+    }
+
+    /**
+     * Builds a poster URL using the configured poster size.
+     */
+    private static function build_poster_url( string $poster_path ): string {
+        $poster_path = ltrim( $poster_path, '/' );
+
+        if ( '' === $poster_path ) {
+            return '';
+        }
+
+        $size = self::get_configured_poster_size();
+
+        if ( 'original' === $size ) {
+            return trailingslashit( self::ORIGINAL_IMAGE_BASE_URL ) . $poster_path;
+        }
+
+        return trailingslashit( self::POSTER_BASE_URL . $size ) . $poster_path;
+    }
+
+    /**
+     * Returns the poster size configured in plugin settings.
+     */
+    private static function get_configured_poster_size(): string {
+        $sizes      = TMDB_Admin_Page_Config::get_poster_sizes();
+        $configured = sanitize_text_field( (string) get_option( 'tmdb_plugin_poster_size', TMDB_Admin_Page_Config::DEFAULT_POSTER_SIZE ) );
+
+        if ( isset( $sizes[ $configured ] ) ) {
+            return $configured;
+        }
+
+        return TMDB_Admin_Page_Config::DEFAULT_POSTER_SIZE;
+    }
+
+    /**
+     * Returns the existing post ID for a TMDB movie when available.
+     */
+    private static function get_existing_movie_post_id( int $tmdb_id ): int {
+        static $cache = [];
+
+        if ( $tmdb_id <= 0 ) {
+            return 0;
+        }
+
+        if ( isset( $cache[ $tmdb_id ] ) ) {
+            return $cache[ $tmdb_id ];
+        }
+
+        $existing = get_posts(
+            [
+                'post_type'      => 'movie',
+                'posts_per_page' => 1,
+                'post_status'    => [ 'publish', 'draft', 'pending', 'future', 'private' ],
+                'meta_query'     => [
+                    [
+                        'key'   => 'TMDB_id',
+                        'value' => $tmdb_id,
+                    ],
+                ],
+                'fields'         => 'ids',
+            ]
+        );
+
+        $cache[ $tmdb_id ] = ! empty( $existing ) ? (int) $existing[0] : 0;
+
+        return $cache[ $tmdb_id ];
     }
 
     /**

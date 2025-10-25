@@ -18,6 +18,7 @@ class TMDB_Taxonomies {
     public const ACTOR    = 'tmdb_actor';
     public const DIRECTOR = 'tmdb_director';
     public const GENRE    = 'tmdb_genre';
+    public const KEYWORD  = 'tmdb_keyword';
 
     /**
      * Registers plugin taxonomies.
@@ -26,6 +27,7 @@ class TMDB_Taxonomies {
         register_taxonomy( self::ACTOR, [ 'movie', 'series' ], self::get_actor_args() );
         register_taxonomy( self::DIRECTOR, [ 'movie', 'series' ], self::get_director_args() );
         register_taxonomy( self::GENRE, [ 'movie', 'series' ], self::get_genre_args() );
+        register_taxonomy( self::KEYWORD, [ 'movie', 'series' ], self::get_keyword_args() );
     }
 
     /**
@@ -93,6 +95,17 @@ class TMDB_Taxonomies {
             [
                 'hierarchical' => true,
                 'rewrite'      => [ 'slug' => 'genres' ],
+            ]
+        );
+    }
+
+    private static function get_keyword_args(): array {
+        return self::get_default_args(
+            __( 'Keyword', 'tmdb-plugin' ),
+            __( 'Keywords', 'tmdb-plugin' ),
+            [
+                'hierarchical' => false,
+                'rewrite'      => [ 'slug' => 'keywords' ],
             ]
         );
     }

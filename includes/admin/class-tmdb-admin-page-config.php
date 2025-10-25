@@ -15,6 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Admin page for configuring TMDB API access.
  */
 class TMDB_Admin_Page_Config {
+    public const DEFAULT_POSTER_SIZE = 'w185';
+
     /**
      * Registers the configuration admin page.
      */
@@ -39,16 +41,20 @@ class TMDB_Admin_Page_Config {
 
         $languages = self::get_available_languages();
 
-        $api_key            = get_option( 'tmdb_plugin_api_key', '' );
-        $language           = get_option( 'tmdb_plugin_language', 'en-US' );
-        $fallback_language  = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
+        $poster_sizes = self::get_poster_sizes();
+
+        $api_key           = get_option( 'tmdb_plugin_api_key', '' );
+        $language          = get_option( 'tmdb_plugin_language', 'en-US' );
+        $fallback_language = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
+        $poster_size       = get_option( 'tmdb_plugin_poster_size', self::DEFAULT_POSTER_SIZE );
 
         if ( isset( $_POST['tmdb_plugin_settings_submit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-            self::handle_form_submission( $languages );
+            self::handle_form_submission( $languages, $poster_sizes );
 
             $api_key           = get_option( 'tmdb_plugin_api_key', '' );
             $language          = get_option( 'tmdb_plugin_language', 'en-US' );
             $fallback_language = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
+            $poster_size       = get_option( 'tmdb_plugin_poster_size', self::DEFAULT_POSTER_SIZE );
         }
 
         settings_errors( 'tmdb_plugin_messages' );
@@ -121,6 +127,25 @@ class TMDB_Admin_Page_Config {
                                 </p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="tmdb_plugin_poster_size">
+                                    <?php esc_html_e( 'Poster Size', 'tmdb-plugin' ); ?>
+                                </label>
+                            </th>
+                            <td>
+                                <select name="tmdb_plugin_poster_size" id="tmdb_plugin_poster_size">
+                                    <?php foreach ( $poster_sizes as $size_key => $label ) : ?>
+                                        <option value="<?php echo esc_attr( $size_key ); ?>" <?php selected( $poster_size, $size_key ); ?>>
+                                            <?php echo esc_html( $label ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e( 'Choose the TMDB poster size used across the plugin.', 'tmdb-plugin' ); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 <input type="hidden" name="tmdb_plugin_settings_submit" value="1" />
@@ -134,8 +159,9 @@ class TMDB_Admin_Page_Config {
      * Handles saving configuration values.
      *
      * @param array<string, string> $languages List of supported languages.
+     * @param array<string, string> $poster_sizes List of supported poster sizes.
      */
-    private static function handle_form_submission( array $languages ): void {
+    private static function handle_form_submission( array $languages, array $poster_sizes ): void {
         if ( ! isset( $_POST['tmdb_plugin_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['tmdb_plugin_nonce'] ), 'tmdb_plugin_save_settings' ) ) {
             return;
         }
@@ -147,6 +173,7 @@ class TMDB_Admin_Page_Config {
         $api_key  = isset( $_POST['tmdb_plugin_api_key'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_api_key'] ) ) : '';
         $language = isset( $_POST['tmdb_plugin_language'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_language'] ) ) : '';
         $fallback = isset( $_POST['tmdb_plugin_fallback_language'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_fallback_language'] ) ) : '';
+        $poster   = isset( $_POST['tmdb_plugin_poster_size'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_poster_size'] ) ) : self::DEFAULT_POSTER_SIZE;
 
         if ( ! array_key_exists( $language, $languages ) ) {
             $language = 'en-US';
@@ -156,9 +183,14 @@ class TMDB_Admin_Page_Config {
             $fallback = 'en-US';
         }
 
+        if ( ! array_key_exists( $poster, $poster_sizes ) ) {
+            $poster = self::DEFAULT_POSTER_SIZE;
+        }
+
         update_option( 'tmdb_plugin_api_key', $api_key );
         update_option( 'tmdb_plugin_language', $language );
         update_option( 'tmdb_plugin_fallback_language', $fallback );
+        update_option( 'tmdb_plugin_poster_size', $poster );
 
         add_settings_error(
             'tmdb_plugin_messages',
@@ -166,6 +198,23 @@ class TMDB_Admin_Page_Config {
             __( 'Settings saved.', 'tmdb-plugin' ),
             'updated'
         );
+    }
+
+    /**
+     * Returns the supported TMDB poster sizes for selection.
+     *
+     * @return array<string, string>
+     */
+    public static function get_poster_sizes(): array {
+        return [
+            'w92'      => __( 'Width 92px', 'tmdb-plugin' ),
+            'w154'     => __( 'Width 154px', 'tmdb-plugin' ),
+            'w185'     => __( 'Width 185px', 'tmdb-plugin' ),
+            'w342'     => __( 'Width 342px', 'tmdb-plugin' ),
+            'w500'     => __( 'Width 500px', 'tmdb-plugin' ),
+            'w780'     => __( 'Width 780px', 'tmdb-plugin' ),
+            'original' => __( 'Original', 'tmdb-plugin' ),
+        ];
     }
 
     /**
