@@ -553,7 +553,7 @@ class TMDB_Admin_Page_Search {
             [
                 'api_key'            => $api_key,
                 'language'           => $language,
-                'append_to_response' => 'credits,videos,keywords',
+                'append_to_response' => 'credits,videos,keywords,websites,external_ids',
                 'include_image_language' => self::build_language_list( $language, $fallback_language, true ),
                 'include_video_language' => self::build_language_list( $language, $fallback_language, true ),
             ]
@@ -572,7 +572,7 @@ class TMDB_Admin_Page_Search {
                 [
                     'api_key'            => $api_key,
                     'language'           => $fallback_language,
-                    'append_to_response' => 'credits,videos,keywords',
+                    'append_to_response' => 'credits,videos,keywords,websites,external_ids',
                     'include_image_language' => self::build_language_list( $fallback_language, $language, true ),
                     'include_video_language' => self::build_language_list( $fallback_language, $language, true ),
                 ]
@@ -728,10 +728,15 @@ class TMDB_Admin_Page_Search {
             }
         }
 
-        $keyword_info     = self::import_keywords( $keyword_raw );
-        $videos_raw       = isset( $movie_data['videos']['results'] ) && is_array( $movie_data['videos']['results'] ) ? $movie_data['videos']['results'] : [];
-        $trailer_info     = self::extract_trailer( $videos_raw );
-        $videos_dump_json = self::serialize_videos_payload( $videos_raw );
+        $keyword_info      = self::import_keywords( $keyword_raw );
+        $videos_raw        = isset( $movie_data['videos']['results'] ) && is_array( $movie_data['videos']['results'] ) ? $movie_data['videos']['results'] : [];
+        $trailer_info      = self::extract_trailer( $videos_raw );
+        $videos_dump_json  = self::serialize_videos_payload( $videos_raw );
+        $websites_raw      = self::extract_websites_payload( $movie_data );
+        $websites_formatted = self::format_websites( $websites_raw );
+        $primary_website    = self::extract_primary_website( $websites_formatted );
+        $websites_dump_json = self::serialize_websites_payload( $websites_raw );
+        $external_ids       = self::sanitize_external_ids( isset( $movie_data['external_ids'] ) && is_array( $movie_data['external_ids'] ) ? $movie_data['external_ids'] : [] );
 
         wp_set_object_terms( $post_id, $cast_info['term_ids'], TMDB_Taxonomies::ACTOR, false );
         wp_set_object_terms( $post_id, $crew_info['term_ids'], TMDB_Taxonomies::DIRECTOR, false );
@@ -747,6 +752,18 @@ class TMDB_Admin_Page_Search {
         update_post_meta( $post_id, 'TMDB_keyword_ids', $keyword_info['term_ids'] );
         update_post_meta( $post_id, 'TMDB_keywords', $keyword_info['keywords'] );
 
+        if ( empty( $websites_formatted ) ) {
+            delete_post_meta( $post_id, 'TMDB_websites' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_websites', $websites_formatted );
+        }
+
+        if ( empty( $primary_website ) ) {
+            delete_post_meta( $post_id, 'TMDB_primary_website' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_primary_website', $primary_website );
+        }
+
         if ( empty( $trailer_info ) ) {
             delete_post_meta( $post_id, 'TMDB_trailer' );
         } else {
@@ -758,6 +775,14 @@ class TMDB_Admin_Page_Search {
         } else {
             update_post_meta( $post_id, 'TMDB_videos_payload', $videos_dump_json );
         }
+
+        if ( '' === $websites_dump_json ) {
+            delete_post_meta( $post_id, 'TMDB_websites_payload' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_websites_payload', $websites_dump_json );
+        }
+
+        self::sync_external_id_meta( $post_id, $external_ids );
 
         return [
             'post_id' => $post_id,
@@ -1189,6 +1214,289 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
+     * Extracts website payload information from the TMDB movie response.
+     *
+     * @param array<string, mixed> $movie_data Movie payload retrieved from TMDB.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function extract_websites_payload( array $movie_data ): array {
+        if ( ! isset( $movie_data['websites'] ) ) {
+            return [];
+        }
+
+        $websites = $movie_data['websites'];
+
+        if ( is_array( $websites ) && isset( $websites['results'] ) && is_array( $websites['results'] ) ) {
+            $websites = $websites['results'];
+        }
+
+        if ( ! is_array( $websites ) ) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                $websites,
+                static function ( $website ): bool {
+                    return is_array( $website );
+                }
+            )
+        );
+    }
+
+    /**
+     * Formats website information for storage in post meta.
+     *
+     * @param array<int, array<string, mixed>> $websites Website payload results.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function format_websites( array $websites ): array {
+        $formatted = [];
+
+        foreach ( $websites as $website ) {
+            if ( ! is_array( $website ) ) {
+                continue;
+            }
+
+            $url = isset( $website['url'] ) ? esc_url_raw( (string) $website['url'] ) : '';
+
+            if ( '' === $url ) {
+                continue;
+            }
+
+            $entry = [
+                'url'      => $url,
+                'official' => ! empty( $website['official'] ),
+            ];
+
+            if ( isset( $website['id'] ) && (int) $website['id'] > 0 ) {
+                $entry['id'] = (int) $website['id'];
+            }
+
+            if ( isset( $website['name'] ) && '' !== $website['name'] ) {
+                $entry['name'] = sanitize_text_field( (string) $website['name'] );
+            }
+
+            if ( isset( $website['type'] ) && '' !== $website['type'] ) {
+                $entry['type'] = sanitize_text_field( (string) $website['type'] );
+            }
+
+            if ( isset( $website['site'] ) && '' !== $website['site'] ) {
+                $entry['site'] = sanitize_text_field( (string) $website['site'] );
+            }
+
+            if ( isset( $website['iso_3166_1'] ) && '' !== $website['iso_3166_1'] ) {
+                $entry['iso_3166_1'] = sanitize_text_field( (string) $website['iso_3166_1'] );
+            }
+
+            $formatted[] = $entry;
+        }
+
+        return $formatted;
+    }
+
+    /**
+     * Determines the most relevant website entry from the provided payload.
+     *
+     * @param array<int, array<string, mixed>> $websites Sanitized websites payload.
+     *
+     * @return array<string, mixed>
+     */
+    private static function extract_primary_website( array $websites ): array {
+        if ( empty( $websites ) ) {
+            return [];
+        }
+
+        $best_score = -1;
+        $best_site  = [];
+
+        foreach ( $websites as $website ) {
+            if ( ! is_array( $website ) || empty( $website['url'] ) ) {
+                continue;
+            }
+
+            $score = 0;
+
+            if ( ! empty( $website['official'] ) ) {
+                $score += 4;
+            }
+
+            if ( isset( $website['type'] ) ) {
+                $type = strtolower( (string) $website['type'] );
+
+                if ( in_array( $type, [ 'official', 'official site', 'official website' ], true ) ) {
+                    $score += 2;
+                }
+            }
+
+            if ( isset( $website['iso_3166_1'] ) && '' !== $website['iso_3166_1'] ) {
+                $score += 'US' === strtoupper( (string) $website['iso_3166_1'] ) ? 1 : 0;
+            }
+
+            if ( $score > $best_score ) {
+                $best_score = $score;
+                $best_site  = $website;
+            }
+        }
+
+        if ( $best_score < 0 ) {
+            foreach ( $websites as $website ) {
+                if ( is_array( $website ) && ! empty( $website['url'] ) ) {
+                    return $website;
+                }
+            }
+
+            return [];
+        }
+
+        return $best_site;
+    }
+
+    /**
+     * Serializes the TMDB websites payload for storage/debugging purposes.
+     *
+     * @param array<int, array<string, mixed>> $websites Website payload.
+     */
+    private static function serialize_websites_payload( array $websites ): string {
+        if ( empty( $websites ) ) {
+            return '';
+        }
+
+        $sanitized = [];
+
+        foreach ( $websites as $website ) {
+            if ( ! is_array( $website ) ) {
+                continue;
+            }
+
+            $sanitized[] = array_filter(
+                [
+                    'id'         => isset( $website['id'] ) ? (int) $website['id'] : null,
+                    'name'       => isset( $website['name'] ) ? sanitize_text_field( (string) $website['name'] ) : null,
+                    'type'       => isset( $website['type'] ) ? sanitize_text_field( (string) $website['type'] ) : null,
+                    'official'   => isset( $website['official'] ) ? (bool) $website['official'] : null,
+                    'url'        => isset( $website['url'] ) ? esc_url_raw( (string) $website['url'] ) : null,
+                    'site'       => isset( $website['site'] ) ? sanitize_text_field( (string) $website['site'] ) : null,
+                    'iso_3166_1' => isset( $website['iso_3166_1'] ) ? sanitize_text_field( (string) $website['iso_3166_1'] ) : null,
+                ],
+                static function ( $value ) {
+                    if ( is_bool( $value ) ) {
+                        return true;
+                    }
+
+                    return null !== $value && '' !== $value;
+                }
+            );
+        }
+
+        if ( empty( $sanitized ) ) {
+            return '';
+        }
+
+        $json = wp_json_encode( $sanitized );
+
+        return is_string( $json ) ? $json : '';
+    }
+
+    /**
+     * Sanitizes external ID payload values.
+     *
+     * @param array<string, mixed> $external_ids External IDs payload from TMDB.
+     *
+     * @return array<string, string>
+     */
+    private static function sanitize_external_ids( array $external_ids ): array {
+        $sanitized = [];
+
+        foreach ( $external_ids as $key => $value ) {
+            if ( ! is_string( $key ) ) {
+                continue;
+            }
+
+            if ( is_array( $value ) ) {
+                continue;
+            }
+
+            if ( is_bool( $value ) ) {
+                $value = $value ? '1' : '0';
+            } elseif ( is_scalar( $value ) ) {
+                $value = (string) $value;
+            } else {
+                continue;
+            }
+
+            $value = trim( $value );
+
+            if ( '' === $value ) {
+                continue;
+            }
+
+            $sanitized_key   = sanitize_key( $key );
+            $sanitized_value = sanitize_text_field( $value );
+
+            if ( '' === $sanitized_key || '' === $sanitized_value ) {
+                continue;
+            }
+
+            $sanitized[ $sanitized_key ] = $sanitized_value;
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * Stores the provided external IDs in post meta, maintaining per-ID keys.
+     *
+     * @param int                  $post_id      WordPress post identifier.
+     * @param array<string, string> $external_ids Sanitized external IDs payload.
+     */
+    private static function sync_external_id_meta( int $post_id, array $external_ids ): void {
+        $existing = get_post_meta( $post_id, 'TMDB_external_ids', true );
+
+        if ( ! is_array( $existing ) ) {
+            $existing = [];
+        }
+
+        if ( empty( $external_ids ) ) {
+            delete_post_meta( $post_id, 'TMDB_external_ids' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_external_ids', $external_ids );
+        }
+
+        $all_keys = array_unique( array_merge( array_keys( $existing ), array_keys( $external_ids ) ) );
+
+        foreach ( $all_keys as $key ) {
+            $meta_key = self::build_external_id_meta_key( $key );
+
+            if ( isset( $external_ids[ $key ] ) && '' !== $external_ids[ $key ] ) {
+                update_post_meta( $post_id, $meta_key, $external_ids[ $key ] );
+            } else {
+                delete_post_meta( $post_id, $meta_key );
+            }
+        }
+    }
+
+    /**
+     * Builds a consistent post meta key for a given external identifier name.
+     */
+    private static function build_external_id_meta_key( string $id_key ): string {
+        $normalized = preg_replace( '/[^a-z0-9]+/i', '_', $id_key );
+        $normalized = is_string( $normalized ) ? trim( $normalized, '_' ) : '';
+
+        if ( '' === $normalized ) {
+            $normalized = sanitize_key( $id_key );
+        }
+
+        if ( '' === $normalized ) {
+            $normalized = 'EXTERNAL_ID';
+        }
+
+        return 'TMDB_' . strtoupper( $normalized ) . '_id';
+    }
+
+    /**
      * Imports TMDB genres as taxonomy terms.
      *
      * @param array<int, array<string, mixed>> $genres Genres payload.
@@ -1472,6 +1780,14 @@ class TMDB_Admin_Page_Search {
             $primary_payload['videos'] = $fallback_payload['videos'];
         }
 
+        if ( self::is_websites_missing( $primary_payload ) && ! self::is_websites_missing( $fallback_payload ) ) {
+            $primary_payload['websites'] = $fallback_payload['websites'];
+        }
+
+        if ( self::is_external_ids_missing( $primary_payload ) && ! self::is_external_ids_missing( $fallback_payload ) ) {
+            $primary_payload['external_ids'] = $fallback_payload['external_ids'];
+        }
+
         if ( self::is_cast_missing( $primary_payload ) && ! self::is_cast_missing( $fallback_payload ) ) {
             if ( ! isset( $primary_payload['credits'] ) || ! is_array( $primary_payload['credits'] ) ) {
                 $primary_payload['credits'] = [];
@@ -1581,6 +1897,54 @@ class TMDB_Admin_Page_Search {
 
         foreach ( $payload['videos']['results'] as $video ) {
             if ( is_array( $video ) && ! empty( $video['key'] ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Determines whether website entries are missing from the payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_websites_missing( array $payload ): bool {
+        if ( ! isset( $payload['websites'] ) || ! is_array( $payload['websites'] ) ) {
+            return true;
+        }
+
+        $websites = $payload['websites'];
+
+        if ( isset( $websites['results'] ) && is_array( $websites['results'] ) ) {
+            $websites = $websites['results'];
+        }
+
+        if ( ! is_array( $websites ) ) {
+            return true;
+        }
+
+        foreach ( $websites as $website ) {
+            if ( is_array( $website ) && ! empty( $website['url'] ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Determines whether external IDs are missing from the payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_external_ids_missing( array $payload ): bool {
+        if ( ! isset( $payload['external_ids'] ) || ! is_array( $payload['external_ids'] ) ) {
+            return true;
+        }
+
+        foreach ( $payload['external_ids'] as $value ) {
+            if ( is_scalar( $value ) && '' !== trim( (string) $value ) ) {
                 return false;
             }
         }
