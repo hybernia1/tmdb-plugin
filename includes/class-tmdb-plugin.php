@@ -47,8 +47,5 @@ class TMDB_Plugin {
         add_action( 'save_post', [ TMDB_Meta_Boxes::class, 'save' ], 10, 2 );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Config::class, 'register' ] );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Search::class, 'register' ] );
-        add_action( 'admin_enqueue_scripts', [ TMDB_Admin_Page_Search::class, 'enqueue_assets' ] );
-        add_action( 'wp_ajax_tmdb_plugin_search_movie', [ TMDB_Admin_Page_Search::class, 'handle_search' ] );
-        add_action( 'wp_ajax_tmdb_plugin_import_movie', [ TMDB_Admin_Page_Search::class, 'handle_import' ] );
     }
 }
