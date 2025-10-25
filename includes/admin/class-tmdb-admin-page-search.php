@@ -20,13 +20,6 @@ class TMDB_Admin_Page_Search {
     private const ORIGINAL_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
 
     /**
-     * Cached nonce shared between the rendered page and AJAX handlers.
-     *
-     * @var string
-     */
-    private static string $nonce = '';
-
-    /**
      * Registers the search submenu page.
      */
     public static function register(): void {
@@ -41,53 +34,6 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Enqueues JavaScript assets for the admin page.
-     *
-     * @param string $hook Current admin page hook suffix.
-     */
-    public static function enqueue_assets( string $hook ): void {
-        if ( 'tmdb-plugin_page_' . self::MENU_SLUG !== $hook ) {
-            return;
-        }
-
-        wp_enqueue_script(
-            'tmdb-plugin-search',
-            plugins_url( 'includes/admin/js/search.js', TMDB_PLUGIN_FILE ),
-            [],
-            TMDB_PLUGIN_VERSION,
-            true
-        );
-
-        wp_localize_script(
-            'tmdb-plugin-search',
-            'tmdbPluginSearch',
-            [
-                'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-                'nonce'        => self::get_nonce(),
-                'imageBaseUrl' => self::IMAGE_BASE_URL,
-                'hasApiKey'    => '' !== sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) ),
-                'initialQuery' => self::get_initial_query(),
-                'strings'      => [
-                    'missingQuery'      => __( 'Please enter a movie title to search.', 'tmdb-plugin' ),
-                    'missingApiKey'     => __( 'Please configure your TMDB API key before searching.', 'tmdb-plugin' ),
-                    'searching'         => __( 'Searching TMDB…', 'tmdb-plugin' ),
-                    'noResults'         => __( 'No movies matched your search.', 'tmdb-plugin' ),
-                    'unexpected'        => __( 'An unexpected error occurred. Please try again.', 'tmdb-plugin' ),
-                    'import'            => __( 'Import movie', 'tmdb-plugin' ),
-                    'importing'         => __( 'Importing…', 'tmdb-plugin' ),
-                    'importSuccess'     => __( 'Movie imported successfully.', 'tmdb-plugin' ),
-                    'importError'       => __( 'Unable to import the selected movie.', 'tmdb-plugin' ),
-                    'paginationPrevious'=> __( 'Previous', 'tmdb-plugin' ),
-                    'paginationNext'    => __( 'Next', 'tmdb-plugin' ),
-                    'fallbackNotice'    => __( 'Results shown using the fallback language.', 'tmdb-plugin' ),
-                    'posterAlt'         => __( 'Poster for %s', 'tmdb-plugin' ),
-                    'votesLabel'        => __( 'votes', 'tmdb-plugin' ),
-                ],
-            ]
-        );
-    }
-
-    /**
      * Renders the admin page markup.
      */
     public static function render(): void {
@@ -95,14 +41,42 @@ class TMDB_Admin_Page_Search {
             return;
         }
 
-        $api_key       = sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) );
-        $has_api_key   = '' !== $api_key;
-        $initial_query = self::get_initial_query();
-        $action_url    = menu_page_url( self::MENU_SLUG, false );
+        $api_key           = sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) );
+        $has_api_key       = '' !== $api_key;
+        $language          = sanitize_text_field( (string) get_option( 'tmdb_plugin_language', 'en-US' ) );
+        $fallback_language = sanitize_text_field( (string) get_option( 'tmdb_plugin_fallback_language', 'en-US' ) );
+        $initial_query     = self::get_initial_query();
+        $current_page      = self::get_requested_page();
+        $action_url        = self::get_page_url();
 
-        if ( ! $action_url ) {
-            $action_url = add_query_arg( 'page', self::MENU_SLUG, admin_url( 'admin.php' ) );
+        $notices = [];
+
+        $import_notice = self::maybe_handle_import_request( $api_key, $language, $fallback_language );
+
+        if ( ! empty( $import_notice ) ) {
+            $notices[] = $import_notice;
         }
+
+        $search_error  = '';
+        $results       = [];
+        $total_pages   = 0;
+        $used_fallback = false;
+
+        if ( '' !== $initial_query && $has_api_key ) {
+            $search_response = self::search_movies( $initial_query, $current_page, $language, $fallback_language, $api_key );
+
+            if ( $search_response['success'] ) {
+                $results       = $search_response['results'];
+                $total_pages   = (int) $search_response['total_pages'];
+                $current_page  = (int) $search_response['page'];
+                $used_fallback = (bool) $search_response['used_fallback'];
+            } else {
+                $search_error = $search_response['message'] ?? __( 'An unexpected error occurred. Please try again.', 'tmdb-plugin' );
+            }
+        } elseif ( '' !== $initial_query && ! $has_api_key ) {
+            $search_error = __( 'TMDB API key is missing. Update the configuration settings first.', 'tmdb-plugin' );
+        }
+
         ?>
         <div class="wrap tmdb-plugin tmdb-plugin__search">
             <h1><?php esc_html_e( 'TMDB Movie Search', 'tmdb-plugin' ); ?></h1>
@@ -113,6 +87,41 @@ class TMDB_Admin_Page_Search {
             <?php if ( ! $has_api_key ) : ?>
                 <div class="notice notice-warning">
                     <p><?php esc_html_e( 'Add a valid TMDB API key on the configuration page before performing a search.', 'tmdb-plugin' ); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <?php foreach ( $notices as $notice ) : ?>
+                <?php
+                $type         = isset( $notice['type'] ) && 'success' === $notice['type'] ? 'success' : 'error';
+                $notice_class = 'notice notice-' . $type;
+                ?>
+                <div class="<?php echo esc_attr( $notice_class ); ?>">
+                    <p>
+                        <?php echo esc_html( $notice['message'] ); ?>
+                        <?php if ( isset( $notice['post_id'] ) ) :
+                            $edit_link = get_edit_post_link( (int) $notice['post_id'] );
+                            if ( $edit_link ) :
+                                ?>
+                                <a class="tmdb-plugin-search__edit-link" href="<?php echo esc_url( $edit_link ); ?>">
+                                    <?php esc_html_e( 'Edit movie', 'tmdb-plugin' ); ?>
+                                </a>
+                                <?php
+                            endif;
+                        endif;
+                        ?>
+                    </p>
+                </div>
+            <?php endforeach; ?>
+
+            <?php if ( '' !== $search_error ) : ?>
+                <div class="notice notice-error">
+                    <p><?php echo esc_html( $search_error ); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <?php if ( $used_fallback ) : ?>
+                <div class="notice notice-info">
+                    <p><?php esc_html_e( 'Results shown using the fallback language.', 'tmdb-plugin' ); ?></p>
                 </div>
             <?php endif; ?>
 
@@ -131,132 +140,179 @@ class TMDB_Admin_Page_Search {
                 <button type="submit" class="button button-primary"><?php esc_html_e( 'Search', 'tmdb-plugin' ); ?></button>
             </form>
 
-            <div id="tmdb-plugin-search-status" class="tmdb-plugin-search__status" data-has-api-key="<?php echo $has_api_key ? '1' : '0'; ?>" aria-live="polite"></div>
+            <?php if ( '' === $search_error && '' !== $initial_query && empty( $results ) && $has_api_key ) : ?>
+                <p class="tmdb-plugin-search__no-results"><?php esc_html_e( 'No movies matched your search.', 'tmdb-plugin' ); ?></p>
+            <?php endif; ?>
 
-            <ul id="tmdb-plugin-search-results" class="tmdb-plugin-search__results"></ul>
+            <?php if ( ! empty( $results ) ) : ?>
+                <ul class="tmdb-plugin-search__results">
+                    <?php foreach ( $results as $result ) : ?>
+                        <li class="tmdb-plugin-search__result">
+                            <?php if ( '' !== $result['poster_path'] ) : ?>
+                                <figure class="tmdb-plugin-search__poster">
+                                    <img
+                                        src="<?php echo esc_url( trailingslashit( self::IMAGE_BASE_URL ) . ltrim( $result['poster_path'], '/' ) ); ?>"
+                                        alt="<?php echo esc_attr( sprintf( __( 'Poster for %s', 'tmdb-plugin' ), $result['title'] ? $result['title'] : $result['original_title'] ) ); ?>"
+                                        loading="lazy"
+                                    />
+                                </figure>
+                            <?php endif; ?>
 
-            <nav id="tmdb-plugin-search-pagination" class="tmdb-plugin-search__pagination" aria-label="<?php echo esc_attr__( 'Movie results pagination', 'tmdb-plugin' ); ?>"></nav>
+                            <div class="tmdb-plugin-search__body">
+                                <h2 class="tmdb-plugin-search__title">
+                                    <?php echo esc_html( $result['title'] ? $result['title'] : $result['original_title'] ); ?>
+                                </h2>
 
-            <noscript>
-                <p><?php esc_html_e( 'JavaScript is required to use the TMDB search interface.', 'tmdb-plugin' ); ?></p>
-            </noscript>
+                                <?php if ( $result['original_title'] && $result['original_title'] !== $result['title'] ) : ?>
+                                    <p class="tmdb-plugin-search__original-title">
+                                        <?php
+                                        printf(
+                                            esc_html__( 'Original title: %s', 'tmdb-plugin' ),
+                                            esc_html( $result['original_title'] )
+                                        );
+                                        ?>
+                                    </p>
+                                <?php endif; ?>
+
+                                <ul class="tmdb-plugin-search__meta">
+                                    <?php if ( $result['release_date'] ) : ?>
+                                        <li>
+                                            <?php
+                                            printf(
+                                                esc_html__( 'Release date: %s', 'tmdb-plugin' ),
+                                                esc_html( $result['release_date'] )
+                                            );
+                                            ?>
+                                        </li>
+                                    <?php endif; ?>
+
+                                    <?php if ( $result['vote_average'] > 0 ) : ?>
+                                        <li>
+                                            <?php
+                                            printf(
+                                                esc_html__( 'Rating: %1$s (%2$s votes)', 'tmdb-plugin' ),
+                                                esc_html( number_format_i18n( $result['vote_average'], 1 ) ),
+                                                esc_html( number_format_i18n( $result['vote_count'] ) )
+                                            );
+                                            ?>
+                                        </li>
+                                    <?php endif; ?>
+
+                                    <?php if ( $result['language'] ) : ?>
+                                        <li>
+                                            <?php
+                                            printf(
+                                                esc_html__( 'Language: %s', 'tmdb-plugin' ),
+                                                esc_html( strtoupper( $result['language'] ) )
+                                            );
+                                            ?>
+                                        </li>
+                                    <?php endif; ?>
+                                </ul>
+
+                                <?php if ( $result['overview'] ) : ?>
+                                    <p class="tmdb-plugin-search__overview"><?php echo esc_html( $result['overview'] ); ?></p>
+                                <?php endif; ?>
+
+                                <div class="tmdb-plugin-search__actions">
+                                    <form method="post" class="tmdb-plugin-search__import-form" action="<?php echo esc_url( self::get_page_url( [
+                                        'query' => $initial_query,
+                                        'paged' => $current_page > 1 ? $current_page : false,
+                                    ] ) ); ?>">
+                                        <?php wp_nonce_field( 'tmdb_plugin_import_movie', 'tmdb_plugin_import_nonce' ); ?>
+                                        <input type="hidden" name="tmdb_plugin_import_movie" value="1" />
+                                        <input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
+                                        <input type="hidden" name="movie_id" value="<?php echo esc_attr( $result['id'] ); ?>" />
+                                        <input type="hidden" name="query" value="<?php echo esc_attr( $initial_query ); ?>" />
+                                        <input type="hidden" name="paged" value="<?php echo esc_attr( $current_page ); ?>" />
+                                        <button type="submit" class="button button-secondary">
+                                            <?php esc_html_e( 'Import movie', 'tmdb-plugin' ); ?>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+
+                <?php if ( $total_pages > 1 ) : ?>
+                    <nav class="tmdb-plugin-search__pagination" aria-label="<?php echo esc_attr__( 'Movie results pagination', 'tmdb-plugin' ); ?>">
+                        <ul class="tmdb-plugin-search__pagination-list">
+                            <li class="tmdb-plugin-search__page-info">
+                                <?php
+                                printf(
+                                    esc_html__( 'Page %1$s of %2$s', 'tmdb-plugin' ),
+                                    esc_html( number_format_i18n( $current_page ) ),
+                                    esc_html( number_format_i18n( $total_pages ) )
+                                );
+                                ?>
+                            </li>
+
+                            <?php if ( $current_page > 1 ) : ?>
+                                <li>
+                                    <a class="button tmdb-plugin-search__page-btn" href="<?php echo esc_url( self::build_pagination_url( $initial_query, $current_page - 1 ) ); ?>">
+                                        <?php esc_html_e( 'Previous', 'tmdb-plugin' ); ?>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+
+                            <?php if ( $current_page < $total_pages ) : ?>
+                                <li>
+                                    <a class="button tmdb-plugin-search__page-btn" href="<?php echo esc_url( self::build_pagination_url( $initial_query, $current_page + 1 ) ); ?>">
+                                        <?php esc_html_e( 'Next', 'tmdb-plugin' ); ?>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                        </ul>
+                    </nav>
+                <?php endif; ?>
+            <?php endif; ?>
         </div>
         <?php
     }
 
     /**
-     * Handles the AJAX request for searching TMDB movies.
+     * Handles import requests triggered from the search page.
+     *
+     * @param string $api_key           TMDB API key.
+     * @param string $language          Preferred language.
+     * @param string $fallback_language Fallback language.
+     *
+     * @return array<string, mixed>
      */
-    public static function handle_search(): void {
-        check_ajax_referer( 'tmdb_plugin_api_search', 'nonce' );
+    private static function maybe_handle_import_request( string $api_key, string $language, string $fallback_language ): array {
+        if ( 'POST' !== $_SERVER['REQUEST_METHOD'] ) {
+            return [];
+        }
+
+        if ( empty( $_POST['tmdb_plugin_import_movie'] ) ) {
+            return [];
+        }
+
+        check_admin_referer( 'tmdb_plugin_import_movie', 'tmdb_plugin_import_nonce' );
 
         if ( ! current_user_can( 'manage_options' ) ) {
-            wp_send_json_error(
-                [ 'message' => __( 'You do not have permission to perform this request.', 'tmdb-plugin' ) ],
-                403
-            );
+            return [
+                'type'    => 'error',
+                'message' => __( 'You do not have permission to perform this request.', 'tmdb-plugin' ),
+            ];
         }
-
-        $query = isset( $_POST['query'] ) ? sanitize_text_field( wp_unslash( $_POST['query'] ) ) : '';
-        $page  = isset( $_POST['page'] ) ? max( 1, (int) $_POST['page'] ) : 1;
-
-        if ( '' === $query ) {
-            wp_send_json_error(
-                [ 'message' => __( 'Please provide a search term.', 'tmdb-plugin' ) ],
-                400
-            );
-        }
-
-        $api_key = sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) );
 
         if ( '' === $api_key ) {
-            wp_send_json_error(
-                [ 'message' => __( 'TMDB API key is missing. Update the configuration settings first.', 'tmdb-plugin' ) ],
-                400
-            );
+            return [
+                'type'    => 'error',
+                'message' => __( 'TMDB API key is missing. Update the configuration settings first.', 'tmdb-plugin' ),
+            ];
         }
 
-        $language          = sanitize_text_field( (string) get_option( 'tmdb_plugin_language', 'en-US' ) );
-        $fallback_language = sanitize_text_field( (string) get_option( 'tmdb_plugin_fallback_language', 'en-US' ) );
-
-        $primary = self::perform_movie_search( $query, $page, $language, $api_key );
-
-        if ( ! $primary['success'] ) {
-            wp_send_json_error(
-                [ 'message' => $primary['message'] ],
-                $primary['code'] ?? 500
-            );
-        }
-
-        $results       = $primary['results'];
-        $total_pages   = $primary['total_pages'];
-        $language_used = $language;
-        $used_fallback = false;
-        $page_used     = $primary['page'];
-
-        if ( empty( $results ) && $fallback_language !== $language ) {
-            $fallback = self::perform_movie_search( $query, 1, $fallback_language, $api_key );
-
-            if ( ! $fallback['success'] ) {
-                wp_send_json_error(
-                    [ 'message' => $fallback['message'] ],
-                    $fallback['code'] ?? 500
-                );
-            }
-
-            if ( ! empty( $fallback['results'] ) ) {
-                $results       = $fallback['results'];
-                $total_pages   = $fallback['total_pages'];
-                $language_used = $fallback_language;
-                $used_fallback = true;
-                $page_used     = $fallback['page'];
-            }
-        }
-
-        wp_send_json_success(
-            [
-                'results'      => $results,
-                'totalPages'   => $total_pages,
-                'page'         => $page_used,
-                'language'     => $language_used,
-                'usedFallback' => $used_fallback,
-            ]
-        );
-    }
-
-    /**
-     * Handles the AJAX request for importing a movie into WordPress.
-     */
-    public static function handle_import(): void {
-        check_ajax_referer( 'tmdb_plugin_api_search', 'nonce' );
-
-        if ( ! current_user_can( 'manage_options' ) ) {
-            wp_send_json_error(
-                [ 'message' => __( 'You do not have permission to perform this request.', 'tmdb-plugin' ) ],
-                403
-            );
-        }
-
-        $movie_id = isset( $_POST['movieId'] ) ? absint( $_POST['movieId'] ) : 0;
+        $movie_id = isset( $_POST['movie_id'] ) ? absint( wp_unslash( $_POST['movie_id'] ) ) : 0;
 
         if ( $movie_id <= 0 ) {
-            wp_send_json_error(
-                [ 'message' => __( 'Invalid movie identifier.', 'tmdb-plugin' ) ],
-                400
-            );
+            return [
+                'type'    => 'error',
+                'message' => __( 'Invalid movie identifier.', 'tmdb-plugin' ),
+            ];
         }
-
-        $api_key = sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) );
-
-        if ( '' === $api_key ) {
-            wp_send_json_error(
-                [ 'message' => __( 'TMDB API key is missing. Update the configuration settings first.', 'tmdb-plugin' ) ],
-                400
-            );
-        }
-
-        $language          = sanitize_text_field( (string) get_option( 'tmdb_plugin_language', 'en-US' ) );
-        $fallback_language = sanitize_text_field( (string) get_option( 'tmdb_plugin_fallback_language', 'en-US' ) );
 
         $movie_response = self::fetch_movie_details( $movie_id, $language, $api_key );
 
@@ -265,28 +321,120 @@ class TMDB_Admin_Page_Search {
         }
 
         if ( ! $movie_response['success'] ) {
-            wp_send_json_error(
-                [ 'message' => $movie_response['message'] ],
-                $movie_response['code'] ?? 500
-            );
+            return [
+                'type'    => 'error',
+                'message' => $movie_response['message'] ?? __( 'Unable to import the selected movie.', 'tmdb-plugin' ),
+            ];
         }
 
         $import = self::import_movie( $movie_response['movie'], $movie_response['language'] );
 
         if ( is_wp_error( $import ) ) {
-            wp_send_json_error(
-                [ 'message' => $import->get_error_message() ],
-                500
-            );
+            return [
+                'type'    => 'error',
+                'message' => $import->get_error_message(),
+            ];
         }
 
-        wp_send_json_success(
-            [
-                'postId'   => $import['post_id'],
-                'message'  => __( 'Movie imported successfully.', 'tmdb-plugin' ),
-                'language' => $movie_response['language'],
-            ]
-        );
+        return [
+            'type'    => 'success',
+            'message' => __( 'Movie imported successfully.', 'tmdb-plugin' ),
+            'post_id' => $import['post_id'],
+        ];
+    }
+
+    /**
+     * Performs a TMDB search request and handles fallback logic.
+     *
+     * @param string $query             Search query.
+     * @param int    $page              Requested page number.
+     * @param string $language          Preferred language.
+     * @param string $fallback_language Fallback language.
+     * @param string $api_key           TMDB API key.
+     *
+     * @return array<string, mixed>
+     */
+    private static function search_movies( string $query, int $page, string $language, string $fallback_language, string $api_key ): array {
+        $primary = self::perform_movie_search( $query, $page, $language, $api_key );
+
+        if ( ! $primary['success'] ) {
+            return $primary;
+        }
+
+        $results       = $primary['results'];
+        $total_pages   = $primary['total_pages'];
+        $used_fallback = false;
+        $page_used     = $primary['page'];
+
+        if ( empty( $results ) && $fallback_language !== $language ) {
+            $fallback = self::perform_movie_search( $query, 1, $fallback_language, $api_key );
+
+            if ( ! $fallback['success'] ) {
+                return $fallback;
+            }
+
+            if ( ! empty( $fallback['results'] ) ) {
+                $results       = $fallback['results'];
+                $total_pages   = $fallback['total_pages'];
+                $used_fallback = true;
+                $page_used     = $fallback['page'];
+            }
+        }
+
+        return [
+            'success'      => true,
+            'results'      => $results,
+            'total_pages'  => $total_pages,
+            'page'         => $page_used,
+            'used_fallback'=> $used_fallback,
+        ];
+    }
+
+    /**
+     * Builds a pagination URL keeping the current query intact.
+     *
+     * @param string $query Search query.
+     * @param int    $page  Target page.
+     */
+    private static function build_pagination_url( string $query, int $page ): string {
+        $args = [
+            'query' => $query,
+            'paged' => $page > 1 ? $page : false,
+        ];
+
+        return self::get_page_url( $args );
+    }
+
+    /**
+     * Retrieves the base URL for the search page with optional arguments.
+     *
+     * @param array<string, mixed> $args Optional query arguments.
+     */
+    private static function get_page_url( array $args = [] ): string {
+        $base_url = menu_page_url( self::MENU_SLUG, false );
+
+        if ( ! $base_url ) {
+            $base_url = add_query_arg( 'page', self::MENU_SLUG, admin_url( 'admin.php' ) );
+        }
+
+        if ( empty( $args ) ) {
+            return $base_url;
+        }
+
+        $args['page'] = self::MENU_SLUG;
+
+        return add_query_arg( $args, $base_url );
+    }
+
+    /**
+     * Retrieves the requested results page number.
+     */
+    private static function get_requested_page(): int {
+        if ( isset( $_REQUEST['paged'] ) ) {
+            return max( 1, (int) sanitize_text_field( wp_unslash( $_REQUEST['paged'] ) ) );
+        }
+
+        return 1;
     }
 
     /**
@@ -771,17 +919,10 @@ class TMDB_Admin_Page_Search {
      * Retrieves the current search query from the request.
      */
     private static function get_initial_query(): string {
-        return isset( $_GET['query'] ) ? sanitize_text_field( wp_unslash( $_GET['query'] ) ) : '';
-    }
-
-    /**
-     * Retrieves or creates the nonce used by the admin page and AJAX handlers.
-     */
-    private static function get_nonce(): string {
-        if ( '' === self::$nonce ) {
-            self::$nonce = wp_create_nonce( 'tmdb_plugin_api_search' );
+        if ( isset( $_REQUEST['query'] ) ) {
+            return sanitize_text_field( wp_unslash( $_REQUEST['query'] ) );
         }
 
-        return self::$nonce;
+        return '';
     }
 }
