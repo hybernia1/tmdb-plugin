@@ -11,6 +11,7 @@ use TMDB\Plugin\Admin\TMDB_Admin_Page_Config;
 use TMDB\Plugin\Admin\TMDB_Admin_Page_Search;
 use TMDB\Plugin\Meta\TMDB_Meta_Boxes;
 use TMDB\Plugin\Post_Types\TMDB_Post_Types;
+use TMDB\Plugin\Taxonomies\TMDB_Taxonomies;
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
@@ -43,6 +44,7 @@ class TMDB_Plugin {
      */
     public function init(): void {
         add_action( 'init', [ TMDB_Post_Types::class, 'register' ] );
+        add_action( 'init', [ TMDB_Taxonomies::class, 'register' ] );
         add_action( 'add_meta_boxes', [ TMDB_Meta_Boxes::class, 'register' ] );
         add_action( 'save_post', [ TMDB_Meta_Boxes::class, 'save' ], 10, 2 );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Config::class, 'register' ] );
