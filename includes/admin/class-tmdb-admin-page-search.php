@@ -23,6 +23,7 @@ class TMDB_Admin_Page_Search {
     private const TMDB_UPLOAD_SUBDIR      = 'tmdb';
     private const TMDB_MEDIA_CATEGORY     = 'movies';
     private const TMDB_ACTOR_MEDIA_CATEGORY = 'actors';
+    private const TMDB_DIRECTOR_MEDIA_CATEGORY = 'directors';
     private const REQUIRED_TRANSLATION_FIELDS = [ 'title', 'overview' ];
     private const FALLBACK_STRING_FIELDS      = [ 'title', 'overview', 'tagline' ];
 
@@ -929,23 +930,51 @@ class TMDB_Admin_Page_Search {
      * Stores detailed metadata for an actor term including profile imagery.
      */
     private static function store_actor_details( int $term_id, array $actor_details, string $actor_name ): void {
+        self::store_person_details(
+            $term_id,
+            $actor_details,
+            $actor_name,
+            'TMDB_actor_data',
+            self::TMDB_ACTOR_MEDIA_CATEGORY
+        );
+    }
+
+    /**
+     * Stores detailed metadata for a director term including profile imagery.
+     */
+    private static function store_director_details( int $term_id, array $director_details, string $director_name ): void {
+        self::store_person_details(
+            $term_id,
+            $director_details,
+            $director_name,
+            'TMDB_director_data',
+            self::TMDB_DIRECTOR_MEDIA_CATEGORY
+        );
+    }
+
+    /**
+     * Stores detailed metadata for a person term including profile imagery.
+     *
+     * @param array<string, mixed> $person_details Details associated with the person.
+     */
+    private static function store_person_details( int $term_id, array $person_details, string $person_name, string $meta_key, string $media_category ): void {
         if ( $term_id <= 0 ) {
             return;
         }
 
-        if ( empty( $actor_details ) ) {
-            delete_term_meta( $term_id, 'TMDB_actor_data' );
-            self::import_actor_profile_image( $term_id, $actor_name, 0, '' );
+        if ( empty( $person_details ) ) {
+            delete_term_meta( $term_id, $meta_key );
+            self::import_person_profile_image( $term_id, $person_name, 0, '', $media_category );
 
             return;
         }
 
-        update_term_meta( $term_id, 'TMDB_actor_data', $actor_details );
+        update_term_meta( $term_id, $meta_key, $person_details );
 
-        $profile_path = isset( $actor_details['profile_path'] ) ? (string) $actor_details['profile_path'] : '';
-        $actor_id     = isset( $actor_details['id'] ) ? (int) $actor_details['id'] : 0;
+        $profile_path = isset( $person_details['profile_path'] ) ? (string) $person_details['profile_path'] : '';
+        $person_id    = isset( $person_details['id'] ) ? (int) $person_details['id'] : 0;
 
-        self::import_actor_profile_image( $term_id, $actor_name, $actor_id, $profile_path );
+        self::import_person_profile_image( $term_id, $person_name, $person_id, $profile_path, $media_category );
     }
 
     /**
@@ -961,23 +990,38 @@ class TMDB_Admin_Page_Search {
         $member['original_name'] = $original_name;
         $member['character']     = $character;
 
-        return self::sanitize_actor_value( '', $member );
+        return self::sanitize_person_value( '', $member );
     }
 
     /**
-     * Recursively sanitizes values contained within an actor payload.
+     * Normalizes the payload returned for a director.
+     *
+     * @param array<string, mixed> $member Director payload from TMDB.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sanitize_director_payload( array $member, int $director_id, string $director_name, string $original_name ): array {
+        $member['id']            = $director_id;
+        $member['name']          = $director_name;
+        $member['original_name'] = $original_name;
+
+        return self::sanitize_person_value( '', $member );
+    }
+
+    /**
+     * Recursively sanitizes values contained within a person payload.
      *
      * @param string|int $key   Array key currently being sanitized.
      * @param mixed      $value Value associated with the key.
      *
      * @return mixed
      */
-    private static function sanitize_actor_value( $key, $value ) {
+    private static function sanitize_person_value( $key, $value ) {
         if ( is_array( $value ) ) {
             $sanitized = [];
 
             foreach ( $value as $child_key => $child_value ) {
-                $sanitized[ $child_key ] = self::sanitize_actor_value( $child_key, $child_value );
+                $sanitized[ $child_key ] = self::sanitize_person_value( $child_key, $child_value );
             }
 
             return $sanitized;
@@ -1015,14 +1059,14 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Ensures an actor profile image is stored locally and linked to the term.
+     * Ensures a person profile image is stored locally and linked to the term.
      */
-    private static function import_actor_profile_image( int $term_id, string $actor_name, int $actor_id, string $profile_path ): void {
+    private static function import_person_profile_image( int $term_id, string $person_name, int $person_id, string $profile_path, string $media_category ): void {
         $profile_path = sanitize_text_field( ltrim( (string) $profile_path, '/' ) );
 
         if ( '' === $profile_path ) {
             $existing_image = get_term_meta( $term_id, 'TMDB_profile_image', true );
-            self::delete_actor_profile_image( $existing_image );
+            self::delete_person_profile_image( $existing_image );
             delete_term_meta( $term_id, 'TMDB_profile_image' );
             delete_term_meta( $term_id, 'TMDB_profile_path' );
             delete_term_meta( $term_id, 'TMDB_profile_size' );
@@ -1035,7 +1079,7 @@ class TMDB_Admin_Page_Search {
         $existing_size  = (string) get_term_meta( $term_id, 'TMDB_profile_size', true );
         $existing_image = get_term_meta( $term_id, 'TMDB_profile_image', true );
 
-        if ( $existing_path === $profile_path && $existing_size === $current_size && self::is_actor_image_meta_valid( $existing_image, $current_size ) ) {
+        if ( $existing_path === $profile_path && $existing_size === $current_size && self::is_person_image_meta_valid( $existing_image, $current_size ) ) {
             return;
         }
 
@@ -1045,13 +1089,13 @@ class TMDB_Admin_Page_Search {
             return;
         }
 
-        $downloaded = self::download_actor_profile_image( $image_url, $actor_name, $actor_id );
+        $downloaded = self::download_person_profile_image( $image_url, $person_name, $person_id, $media_category );
 
         if ( null === $downloaded ) {
             return;
         }
 
-        self::delete_actor_profile_image( $existing_image );
+        self::delete_person_profile_image( $existing_image );
 
         update_term_meta( $term_id, 'TMDB_profile_image', $downloaded );
         update_term_meta( $term_id, 'TMDB_profile_path', $profile_path );
@@ -1059,11 +1103,11 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Removes a previously stored actor profile image from the filesystem.
+     * Removes a previously stored person profile image from the filesystem.
      *
      * @param mixed $image_meta Stored image metadata.
      */
-    private static function delete_actor_profile_image( $image_meta ): void {
+    private static function delete_person_profile_image( $image_meta ): void {
         if ( ! is_array( $image_meta ) || empty( $image_meta['path'] ) ) {
             return;
         }
@@ -1082,9 +1126,9 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Downloads and stores an actor profile image in the uploads directory.
+     * Downloads and stores a person profile image in the uploads directory.
      */
-    private static function download_actor_profile_image( string $image_url, string $actor_name, int $actor_id ): ?array {
+    private static function download_person_profile_image( string $image_url, string $person_name, int $person_id, string $media_category ): ?array {
         if ( '' === $image_url ) {
             return null;
         }
@@ -1105,7 +1149,7 @@ class TMDB_Admin_Page_Search {
             return null;
         }
 
-        $subdir     = self::build_actor_upload_subdir( $actor_name );
+        $subdir     = self::build_person_upload_subdir( $person_name, $media_category );
         $target_dir = trailingslashit( $upload_dir['basedir'] ) . $subdir;
 
         if ( ! wp_mkdir_p( $target_dir ) ) {
@@ -1119,7 +1163,8 @@ class TMDB_Admin_Page_Search {
         $basename    = is_string( $parsed_path ) ? wp_basename( $parsed_path ) : '';
 
         if ( '' === $basename ) {
-            $basename = $actor_id > 0 ? sprintf( '%d.jpg', $actor_id ) : 'actor.jpg';
+            $default   = sprintf( '%s.jpg', rtrim( $media_category, 's' ) );
+            $basename = $person_id > 0 ? sprintf( '%d.jpg', $person_id ) : $default;
         }
 
         $extension = pathinfo( $basename, PATHINFO_EXTENSION );
@@ -1128,7 +1173,7 @@ class TMDB_Admin_Page_Search {
             $extension = 'jpg';
         }
 
-        $proposed  = $actor_id > 0 ? sprintf( '%d-%s.%s', $actor_id, $size, $extension ) : $basename;
+        $proposed  = $person_id > 0 ? sprintf( '%d-%s.%s', $person_id, $size, $extension ) : $basename;
         $filename  = wp_unique_filename( $target_dir, $proposed );
         $new_path  = trailingslashit( $target_dir ) . $filename;
 
@@ -1162,40 +1207,40 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Builds the upload subdirectory used for storing actor images.
+     * Builds the upload subdirectory used for storing person images.
      */
-    private static function build_actor_upload_subdir( string $actor_name ): string {
-        $initial = self::extract_actor_initial( $actor_name );
+    private static function build_person_upload_subdir( string $person_name, string $media_category ): string {
+        $initial = self::extract_person_initial( $person_name );
 
-        return implode( '/', [ self::TMDB_UPLOAD_SUBDIR, self::TMDB_ACTOR_MEDIA_CATEGORY, $initial ] );
+        return implode( '/', [ self::TMDB_UPLOAD_SUBDIR, $media_category, $initial ] );
     }
 
     /**
-     * Resolves the directory initial based on the actor name.
+     * Resolves the directory initial based on the person name.
      */
-    private static function extract_actor_initial( string $actor_name ): string {
-        $actor_name = trim( $actor_name );
+    private static function extract_person_initial( string $person_name ): string {
+        $person_name = trim( $person_name );
 
-        if ( '' === $actor_name ) {
+        if ( '' === $person_name ) {
             return '#';
         }
 
         if ( function_exists( 'remove_accents' ) ) {
-            $actor_name = remove_accents( $actor_name );
+            $person_name = remove_accents( $person_name );
         }
 
         if ( function_exists( 'mb_strtoupper' ) ) {
-            $actor_name = mb_strtoupper( $actor_name, 'UTF-8' );
+            $person_name = mb_strtoupper( $person_name, 'UTF-8' );
         } else {
-            $actor_name = strtoupper( $actor_name );
+            $person_name = strtoupper( $person_name );
         }
 
-        $actor_name = ltrim( $actor_name );
+        $person_name = ltrim( $person_name );
 
         if ( function_exists( 'mb_substr' ) ) {
-            $initial = mb_substr( $actor_name, 0, 1, 'UTF-8' );
+            $initial = mb_substr( $person_name, 0, 1, 'UTF-8' );
         } else {
-            $initial = substr( $actor_name, 0, 1 );
+            $initial = substr( $person_name, 0, 1 );
         }
 
         $initial = preg_replace( '/[^A-Z0-9]/', '', (string) $initial );
@@ -1208,12 +1253,12 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Determines whether the stored actor image metadata points to a valid file.
+     * Determines whether the stored person image metadata points to a valid file.
      *
      * @param mixed  $image_meta Stored metadata.
      * @param string $expected_size Expected profile size key.
      */
-    private static function is_actor_image_meta_valid( $image_meta, string $expected_size ): bool {
+    private static function is_person_image_meta_valid( $image_meta, string $expected_size ): bool {
         if ( ! is_array( $image_meta ) || empty( $image_meta['path'] ) ) {
             return false;
         }
@@ -1259,11 +1304,12 @@ class TMDB_Admin_Page_Search {
 
             $director_id = isset( $member['id'] ) ? (int) $member['id'] : 0;
 
-            $names       = self::resolve_person_names( $member, $fallback_lookup[ $director_id ] ?? null );
-            $name        = $names['display'];
-            $original    = $names['original'];
-            $name        = sanitize_text_field( $name );
-            $original    = sanitize_text_field( $original );
+            $names            = self::resolve_person_names( $member, $fallback_lookup[ $director_id ] ?? null );
+            $name             = $names['display'];
+            $original         = $names['original'];
+            $name             = sanitize_text_field( $name );
+            $original         = sanitize_text_field( $original );
+            $director_details = self::sanitize_director_payload( $member, $director_id, $name, $original );
 
             if ( '' === $name ) {
                 continue;
@@ -1273,6 +1319,7 @@ class TMDB_Admin_Page_Search {
             if ( $term_id ) {
                 $term_ids[] = $term_id;
                 self::update_person_term_meta( $term_id, $original );
+                self::store_director_details( $term_id, $director_details, $name );
             }
 
             $directors[] = [
