@@ -17,6 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class TMDB_Admin_Page_Config {
     public const DEFAULT_POSTER_SIZE          = 'w185';
     public const DEFAULT_BACKDROP_SIZE        = 'w780';
+    public const DEFAULT_PROFILE_SIZE         = 'w185';
     public const DEFAULT_GALLERY_IMAGE_COUNT  = 0;
     public const MAX_GALLERY_IMAGE_COUNT      = 20;
 
@@ -46,22 +47,25 @@ class TMDB_Admin_Page_Config {
 
         $poster_sizes   = self::get_poster_sizes();
         $backdrop_sizes = self::get_backdrop_sizes();
+        $profile_sizes  = self::get_profile_sizes();
 
         $api_key           = get_option( 'tmdb_plugin_api_key', '' );
         $language          = get_option( 'tmdb_plugin_language', 'en-US' );
         $fallback_language = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
         $poster_size       = get_option( 'tmdb_plugin_poster_size', self::DEFAULT_POSTER_SIZE );
         $backdrop_size     = get_option( 'tmdb_plugin_backdrop_size', self::DEFAULT_BACKDROP_SIZE );
+        $profile_size      = get_option( 'tmdb_plugin_profile_size', self::DEFAULT_PROFILE_SIZE );
         $gallery_image_count = (int) get_option( 'tmdb_plugin_gallery_image_count', self::DEFAULT_GALLERY_IMAGE_COUNT );
 
         if ( isset( $_POST['tmdb_plugin_settings_submit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-            self::handle_form_submission( $languages, $poster_sizes, $backdrop_sizes );
+            self::handle_form_submission( $languages, $poster_sizes, $backdrop_sizes, $profile_sizes );
 
             $api_key           = get_option( 'tmdb_plugin_api_key', '' );
             $language          = get_option( 'tmdb_plugin_language', 'en-US' );
             $fallback_language = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
             $poster_size       = get_option( 'tmdb_plugin_poster_size', self::DEFAULT_POSTER_SIZE );
             $backdrop_size     = get_option( 'tmdb_plugin_backdrop_size', self::DEFAULT_BACKDROP_SIZE );
+            $profile_size      = get_option( 'tmdb_plugin_profile_size', self::DEFAULT_PROFILE_SIZE );
             $gallery_image_count = (int) get_option( 'tmdb_plugin_gallery_image_count', self::DEFAULT_GALLERY_IMAGE_COUNT );
         }
 
@@ -193,6 +197,25 @@ class TMDB_Admin_Page_Config {
                                 </p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="tmdb_plugin_profile_size">
+                                    <?php esc_html_e( 'Actor Image Quality', 'tmdb-plugin' ); ?>
+                                </label>
+                            </th>
+                            <td>
+                                <select name="tmdb_plugin_profile_size" id="tmdb_plugin_profile_size">
+                                    <?php foreach ( $profile_sizes as $size_key => $label ) : ?>
+                                        <option value="<?php echo esc_attr( $size_key ); ?>" <?php selected( $profile_size, $size_key ); ?>>
+                                            <?php echo esc_html( $label ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e( 'Choose the TMDB image size used when importing actor photos.', 'tmdb-plugin' ); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 <input type="hidden" name="tmdb_plugin_settings_submit" value="1" />
@@ -208,8 +231,9 @@ class TMDB_Admin_Page_Config {
      * @param array<string, string> $languages List of supported languages.
      * @param array<string, string> $poster_sizes   List of supported poster sizes.
      * @param array<string, string> $backdrop_sizes List of supported backdrop sizes.
+     * @param array<string, string> $profile_sizes  List of supported profile sizes.
      */
-    private static function handle_form_submission( array $languages, array $poster_sizes, array $backdrop_sizes ): void {
+    private static function handle_form_submission( array $languages, array $poster_sizes, array $backdrop_sizes, array $profile_sizes ): void {
         if ( ! isset( $_POST['tmdb_plugin_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['tmdb_plugin_nonce'] ), 'tmdb_plugin_save_settings' ) ) {
             return;
         }
@@ -223,6 +247,7 @@ class TMDB_Admin_Page_Config {
         $fallback = isset( $_POST['tmdb_plugin_fallback_language'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_fallback_language'] ) ) : '';
         $poster   = isset( $_POST['tmdb_plugin_poster_size'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_poster_size'] ) ) : self::DEFAULT_POSTER_SIZE;
         $backdrop = isset( $_POST['tmdb_plugin_backdrop_size'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_backdrop_size'] ) ) : self::DEFAULT_BACKDROP_SIZE;
+        $profile  = isset( $_POST['tmdb_plugin_profile_size'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_profile_size'] ) ) : self::DEFAULT_PROFILE_SIZE;
         $gallery_count = isset( $_POST['tmdb_plugin_gallery_image_count'] ) ? (int) $_POST['tmdb_plugin_gallery_image_count'] : self::DEFAULT_GALLERY_IMAGE_COUNT;
 
         if ( ! array_key_exists( $language, $languages ) ) {
@@ -241,6 +266,10 @@ class TMDB_Admin_Page_Config {
             $backdrop = self::DEFAULT_BACKDROP_SIZE;
         }
 
+        if ( ! array_key_exists( $profile, $profile_sizes ) ) {
+            $profile = self::DEFAULT_PROFILE_SIZE;
+        }
+
         if ( $gallery_count < 0 ) {
             $gallery_count = self::DEFAULT_GALLERY_IMAGE_COUNT;
         }
@@ -254,6 +283,7 @@ class TMDB_Admin_Page_Config {
         update_option( 'tmdb_plugin_fallback_language', $fallback );
         update_option( 'tmdb_plugin_poster_size', $poster );
         update_option( 'tmdb_plugin_backdrop_size', $backdrop );
+        update_option( 'tmdb_plugin_profile_size', $profile );
         update_option( 'tmdb_plugin_gallery_image_count', $gallery_count );
 
         add_settings_error(
@@ -291,6 +321,20 @@ class TMDB_Admin_Page_Config {
             'w300'    => __( 'Width 300px', 'tmdb-plugin' ),
             'w780'    => __( 'Width 780px', 'tmdb-plugin' ),
             'w1280'   => __( 'Width 1280px', 'tmdb-plugin' ),
+            'original' => __( 'Original', 'tmdb-plugin' ),
+        ];
+    }
+
+    /**
+     * Returns the supported TMDB profile sizes for selection.
+     *
+     * @return array<string, string>
+     */
+    public static function get_profile_sizes(): array {
+        return [
+            'w45'     => __( 'Width 45px', 'tmdb-plugin' ),
+            'w185'    => __( 'Width 185px', 'tmdb-plugin' ),
+            'h632'    => __( 'Height 632px', 'tmdb-plugin' ),
             'original' => __( 'Original', 'tmdb-plugin' ),
         ];
     }

@@ -22,6 +22,7 @@ class TMDB_Admin_Page_Search {
     private const ORIGINAL_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
     private const TMDB_UPLOAD_SUBDIR      = 'tmdb';
     private const TMDB_MEDIA_CATEGORY     = 'movies';
+    private const TMDB_ACTOR_MEDIA_CATEGORY = 'actors';
     private const REQUIRED_TRANSLATION_FIELDS = [ 'title', 'overview' ];
     private const FALLBACK_STRING_FIELDS      = [ 'title', 'overview', 'tagline' ];
 
@@ -842,10 +843,12 @@ class TMDB_Admin_Page_Search {
                 continue;
             }
             $term_id        = self::upsert_related_term( TMDB_Taxonomies::ACTOR, $actor_id, $actor_name );
+            $actor_details  = self::sanitize_actor_payload( $member, $actor_id, $actor_name, $original_name, $character );
 
             if ( $term_id ) {
                 $term_ids[] = $term_id;
                 self::update_person_term_meta( $term_id, $original_name );
+                self::store_actor_details( $term_id, $actor_details, $actor_name );
             }
 
             $stored_cast[] = [
@@ -920,6 +923,314 @@ class TMDB_Admin_Page_Search {
         }
 
         update_term_meta( $term_id, 'TMDB_roles', array_values( $existing_roles ) );
+    }
+
+    /**
+     * Stores detailed metadata for an actor term including profile imagery.
+     */
+    private static function store_actor_details( int $term_id, array $actor_details, string $actor_name ): void {
+        if ( $term_id <= 0 ) {
+            return;
+        }
+
+        if ( empty( $actor_details ) ) {
+            delete_term_meta( $term_id, 'TMDB_actor_data' );
+            self::import_actor_profile_image( $term_id, $actor_name, 0, '' );
+
+            return;
+        }
+
+        update_term_meta( $term_id, 'TMDB_actor_data', $actor_details );
+
+        $profile_path = isset( $actor_details['profile_path'] ) ? (string) $actor_details['profile_path'] : '';
+        $actor_id     = isset( $actor_details['id'] ) ? (int) $actor_details['id'] : 0;
+
+        self::import_actor_profile_image( $term_id, $actor_name, $actor_id, $profile_path );
+    }
+
+    /**
+     * Normalizes the payload returned for a cast member.
+     *
+     * @param array<string, mixed> $member Actor payload from TMDB.
+     *
+     * @return array<string, mixed>
+     */
+    private static function sanitize_actor_payload( array $member, int $actor_id, string $actor_name, string $original_name, string $character ): array {
+        $member['id']            = $actor_id;
+        $member['name']          = $actor_name;
+        $member['original_name'] = $original_name;
+        $member['character']     = $character;
+
+        return self::sanitize_actor_value( '', $member );
+    }
+
+    /**
+     * Recursively sanitizes values contained within an actor payload.
+     *
+     * @param string|int $key   Array key currently being sanitized.
+     * @param mixed      $value Value associated with the key.
+     *
+     * @return mixed
+     */
+    private static function sanitize_actor_value( $key, $value ) {
+        if ( is_array( $value ) ) {
+            $sanitized = [];
+
+            foreach ( $value as $child_key => $child_value ) {
+                $sanitized[ $child_key ] = self::sanitize_actor_value( $child_key, $child_value );
+            }
+
+            return $sanitized;
+        }
+
+        if ( null === $value ) {
+            return null;
+        }
+
+        if ( is_bool( $value ) ) {
+            return (bool) $value;
+        }
+
+        if ( is_int( $value ) ) {
+            return $value;
+        }
+
+        if ( is_float( $value ) ) {
+            return $value;
+        }
+
+        if ( is_numeric( $value ) ) {
+            return 0 + $value;
+        }
+
+        if ( ! is_string( $value ) ) {
+            return $value;
+        }
+
+        if ( in_array( (string) $key, [ 'profile_path', 'poster_path', 'backdrop_path' ], true ) ) {
+            $value = ltrim( $value, '/' );
+        }
+
+        return sanitize_text_field( $value );
+    }
+
+    /**
+     * Ensures an actor profile image is stored locally and linked to the term.
+     */
+    private static function import_actor_profile_image( int $term_id, string $actor_name, int $actor_id, string $profile_path ): void {
+        $profile_path = sanitize_text_field( ltrim( (string) $profile_path, '/' ) );
+
+        if ( '' === $profile_path ) {
+            $existing_image = get_term_meta( $term_id, 'TMDB_profile_image', true );
+            self::delete_actor_profile_image( $existing_image );
+            delete_term_meta( $term_id, 'TMDB_profile_image' );
+            delete_term_meta( $term_id, 'TMDB_profile_path' );
+            delete_term_meta( $term_id, 'TMDB_profile_size' );
+
+            return;
+        }
+
+        $current_size   = self::get_configured_profile_size();
+        $existing_path  = (string) get_term_meta( $term_id, 'TMDB_profile_path', true );
+        $existing_size  = (string) get_term_meta( $term_id, 'TMDB_profile_size', true );
+        $existing_image = get_term_meta( $term_id, 'TMDB_profile_image', true );
+
+        if ( $existing_path === $profile_path && $existing_size === $current_size && self::is_actor_image_meta_valid( $existing_image, $current_size ) ) {
+            return;
+        }
+
+        $image_url = self::build_profile_url( $profile_path );
+
+        if ( '' === $image_url ) {
+            return;
+        }
+
+        $downloaded = self::download_actor_profile_image( $image_url, $actor_name, $actor_id );
+
+        if ( null === $downloaded ) {
+            return;
+        }
+
+        self::delete_actor_profile_image( $existing_image );
+
+        update_term_meta( $term_id, 'TMDB_profile_image', $downloaded );
+        update_term_meta( $term_id, 'TMDB_profile_path', $profile_path );
+        update_term_meta( $term_id, 'TMDB_profile_size', $current_size );
+    }
+
+    /**
+     * Removes a previously stored actor profile image from the filesystem.
+     *
+     * @param mixed $image_meta Stored image metadata.
+     */
+    private static function delete_actor_profile_image( $image_meta ): void {
+        if ( ! is_array( $image_meta ) || empty( $image_meta['path'] ) ) {
+            return;
+        }
+
+        $upload_dir = wp_upload_dir();
+
+        if ( ! empty( $upload_dir['error'] ) ) {
+            return;
+        }
+
+        $full_path = trailingslashit( $upload_dir['basedir'] ) . ltrim( (string) $image_meta['path'], '/' );
+
+        if ( file_exists( $full_path ) ) {
+            wp_delete_file( $full_path );
+        }
+    }
+
+    /**
+     * Downloads and stores an actor profile image in the uploads directory.
+     */
+    private static function download_actor_profile_image( string $image_url, string $actor_name, int $actor_id ): ?array {
+        if ( '' === $image_url ) {
+            return null;
+        }
+
+        self::ensure_media_dependencies_loaded();
+
+        $temporary_file = download_url( $image_url );
+
+        if ( is_wp_error( $temporary_file ) ) {
+            return null;
+        }
+
+        $upload_dir = wp_upload_dir();
+
+        if ( ! empty( $upload_dir['error'] ) ) {
+            @unlink( $temporary_file );
+
+            return null;
+        }
+
+        $subdir     = self::build_actor_upload_subdir( $actor_name );
+        $target_dir = trailingslashit( $upload_dir['basedir'] ) . $subdir;
+
+        if ( ! wp_mkdir_p( $target_dir ) ) {
+            @unlink( $temporary_file );
+
+            return null;
+        }
+
+        $size       = self::get_configured_profile_size();
+        $parsed_path = wp_parse_url( $image_url, PHP_URL_PATH );
+        $basename    = is_string( $parsed_path ) ? wp_basename( $parsed_path ) : '';
+
+        if ( '' === $basename ) {
+            $basename = $actor_id > 0 ? sprintf( '%d.jpg', $actor_id ) : 'actor.jpg';
+        }
+
+        $extension = pathinfo( $basename, PATHINFO_EXTENSION );
+
+        if ( '' === $extension ) {
+            $extension = 'jpg';
+        }
+
+        $proposed  = $actor_id > 0 ? sprintf( '%d-%s.%s', $actor_id, $size, $extension ) : $basename;
+        $filename  = wp_unique_filename( $target_dir, $proposed );
+        $new_path  = trailingslashit( $target_dir ) . $filename;
+
+        if ( file_exists( $new_path ) ) {
+            wp_delete_file( $new_path );
+        }
+
+        $moved = @rename( $temporary_file, $new_path );
+
+        if ( ! $moved ) {
+            $moved = @copy( $temporary_file, $new_path );
+            @unlink( $temporary_file );
+        }
+
+        if ( ! $moved ) {
+            @unlink( $temporary_file );
+
+            return null;
+        }
+
+        $relative_path = $subdir . '/' . $filename;
+        $public_url    = trailingslashit( $upload_dir['baseurl'] ) . $relative_path;
+
+        return [
+            'path'     => $relative_path,
+            'url'      => $public_url,
+            'filename' => $filename,
+            'size'     => $size,
+            'updated'  => time(),
+        ];
+    }
+
+    /**
+     * Builds the upload subdirectory used for storing actor images.
+     */
+    private static function build_actor_upload_subdir( string $actor_name ): string {
+        $initial = self::extract_actor_initial( $actor_name );
+
+        return implode( '/', [ self::TMDB_UPLOAD_SUBDIR, self::TMDB_ACTOR_MEDIA_CATEGORY, $initial ] );
+    }
+
+    /**
+     * Resolves the directory initial based on the actor name.
+     */
+    private static function extract_actor_initial( string $actor_name ): string {
+        $actor_name = trim( $actor_name );
+
+        if ( '' === $actor_name ) {
+            return '#';
+        }
+
+        if ( function_exists( 'remove_accents' ) ) {
+            $actor_name = remove_accents( $actor_name );
+        }
+
+        if ( function_exists( 'mb_strtoupper' ) ) {
+            $actor_name = mb_strtoupper( $actor_name, 'UTF-8' );
+        } else {
+            $actor_name = strtoupper( $actor_name );
+        }
+
+        $actor_name = ltrim( $actor_name );
+
+        if ( function_exists( 'mb_substr' ) ) {
+            $initial = mb_substr( $actor_name, 0, 1, 'UTF-8' );
+        } else {
+            $initial = substr( $actor_name, 0, 1 );
+        }
+
+        $initial = preg_replace( '/[^A-Z0-9]/', '', (string) $initial );
+
+        if ( '' === $initial ) {
+            return '#';
+        }
+
+        return $initial;
+    }
+
+    /**
+     * Determines whether the stored actor image metadata points to a valid file.
+     *
+     * @param mixed  $image_meta Stored metadata.
+     * @param string $expected_size Expected profile size key.
+     */
+    private static function is_actor_image_meta_valid( $image_meta, string $expected_size ): bool {
+        if ( ! is_array( $image_meta ) || empty( $image_meta['path'] ) ) {
+            return false;
+        }
+
+        if ( isset( $image_meta['size'] ) && $image_meta['size'] !== $expected_size ) {
+            return false;
+        }
+
+        $upload_dir = wp_upload_dir();
+
+        if ( ! empty( $upload_dir['error'] ) ) {
+            return false;
+        }
+
+        $full_path = trailingslashit( $upload_dir['basedir'] ) . ltrim( (string) $image_meta['path'], '/' );
+
+        return file_exists( $full_path );
     }
 
     /**
@@ -1989,7 +2300,128 @@ class TMDB_Admin_Page_Search {
             return 0;
         }
 
-        return (int) $attachment_id;
+        $attachment_id = (int) $attachment_id;
+
+        self::ensure_movie_attachment_location( $attachment_id, $tmdb_id );
+
+        return $attachment_id;
+    }
+
+    /**
+     * Ensures movie attachments are stored within the TMDB upload subdirectory.
+     */
+    private static function ensure_movie_attachment_location( int $attachment_id, int $tmdb_id ): void {
+        if ( $attachment_id <= 0 ) {
+            return;
+        }
+
+        $attached_file = get_attached_file( $attachment_id );
+
+        if ( ! $attached_file ) {
+            return;
+        }
+
+        $attached_file = (string) $attached_file;
+
+        if ( '' === $attached_file || ! file_exists( $attached_file ) ) {
+            return;
+        }
+
+        $upload_dir = wp_upload_dir();
+
+        if ( ! empty( $upload_dir['error'] ) ) {
+            return;
+        }
+
+        $target_relative = self::build_movie_upload_subdir( $tmdb_id );
+        $target_dir      = trailingslashit( $upload_dir['basedir'] ) . $target_relative;
+        $current_dir     = trailingslashit( dirname( $attached_file ) );
+
+        if ( untrailingslashit( $current_dir ) === untrailingslashit( $target_dir ) ) {
+            return;
+        }
+
+        if ( ! wp_mkdir_p( $target_dir ) ) {
+            return;
+        }
+
+        $filename   = wp_basename( $attached_file );
+        $new_path   = trailingslashit( $target_dir ) . $filename;
+        $source_dir = $current_dir;
+
+        if ( ! self::move_file_to_destination( $attached_file, $new_path ) ) {
+            return;
+        }
+
+        update_attached_file( $attachment_id, $new_path );
+
+        $metadata = wp_get_attachment_metadata( $attachment_id );
+
+        if ( is_array( $metadata ) ) {
+            $metadata['file'] = trailingslashit( $target_relative ) . $filename;
+
+            if ( isset( $metadata['sizes'] ) && is_array( $metadata['sizes'] ) ) {
+                foreach ( $metadata['sizes'] as $size_key => $size_data ) {
+                    if ( ! is_array( $size_data ) || empty( $size_data['file'] ) ) {
+                        continue;
+                    }
+
+                    $size_filename = (string) $size_data['file'];
+                    $old_size_path = trailingslashit( $source_dir ) . $size_filename;
+                    $new_size_path = trailingslashit( $target_dir ) . $size_filename;
+
+                    if ( file_exists( $old_size_path ) ) {
+                        self::move_file_to_destination( $old_size_path, $new_size_path );
+                    }
+                }
+            }
+
+            wp_update_attachment_metadata( $attachment_id, $metadata );
+        }
+    }
+
+    /**
+     * Builds the relative uploads path for a movie asset.
+     */
+    private static function build_movie_upload_subdir( int $tmdb_id ): string {
+        $segments = [ self::TMDB_UPLOAD_SUBDIR, self::TMDB_MEDIA_CATEGORY ];
+
+        if ( $tmdb_id > 0 ) {
+            $segments[] = (string) $tmdb_id;
+        }
+
+        return implode( '/', $segments );
+    }
+
+    /**
+     * Moves a file to the requested destination ensuring directories exist.
+     */
+    private static function move_file_to_destination( string $source, string $destination ): bool {
+        if ( '' === $source || '' === $destination || ! file_exists( $source ) ) {
+            return false;
+        }
+
+        $destination_dir = dirname( $destination );
+
+        if ( ! is_dir( $destination_dir ) && ! wp_mkdir_p( $destination_dir ) ) {
+            return false;
+        }
+
+        if ( file_exists( $destination ) ) {
+            wp_delete_file( $destination );
+        }
+
+        if ( @rename( $source, $destination ) ) {
+            return true;
+        }
+
+        if ( @copy( $source, $destination ) ) {
+            wp_delete_file( $source );
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -2395,6 +2827,25 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
+     * Builds a profile URL using the configured profile size.
+     */
+    private static function build_profile_url( string $profile_path ): string {
+        $profile_path = ltrim( $profile_path, '/' );
+
+        if ( '' === $profile_path ) {
+            return '';
+        }
+
+        $size = self::get_configured_profile_size();
+
+        if ( 'original' === $size ) {
+            return trailingslashit( self::ORIGINAL_IMAGE_BASE_URL ) . $profile_path;
+        }
+
+        return trailingslashit( self::POSTER_BASE_URL . $size ) . $profile_path;
+    }
+
+    /**
      * Builds a poster URL using the configured poster size.
      */
     private static function build_poster_url( string $poster_path ): string {
@@ -2444,6 +2895,20 @@ class TMDB_Admin_Page_Search {
         }
 
         return TMDB_Admin_Page_Config::DEFAULT_POSTER_SIZE;
+    }
+
+    /**
+     * Returns the configured profile image size.
+     */
+    private static function get_configured_profile_size(): string {
+        $sizes      = TMDB_Admin_Page_Config::get_profile_sizes();
+        $configured = sanitize_text_field( (string) get_option( 'tmdb_plugin_profile_size', TMDB_Admin_Page_Config::DEFAULT_PROFILE_SIZE ) );
+
+        if ( isset( $sizes[ $configured ] ) ) {
+            return $configured;
+        }
+
+        return TMDB_Admin_Page_Config::DEFAULT_PROFILE_SIZE;
     }
 
     /**
