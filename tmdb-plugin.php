@@ -26,6 +26,7 @@ const TMDB_PLUGIN_FILE    = __FILE__;
 require_once __DIR__ . '/includes/admin/class-tmdb-admin-page-config.php';
 require_once __DIR__ . '/includes/admin/class-tmdb-admin-page-search.php';
 require_once __DIR__ . '/includes/post-types/class-tmdb-post-types.php';
+require_once __DIR__ . '/includes/taxonomies/class-tmdb-taxonomies.php';
 require_once __DIR__ . '/includes/meta/class-tmdb-meta-boxes.php';
 require_once __DIR__ . '/includes/class-tmdb-plugin.php';
 

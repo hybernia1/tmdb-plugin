@@ -20,14 +20,11 @@ class TMDB_Post_Types {
      */
     public static function register(): void {
         $post_types = [
-            'movie'    => self::get_movie_args(),
-            'series'   => self::get_series_args(),
-            'season'   => self::get_season_args(),
-            'episode'  => self::get_episode_args(),
-            'actor'    => self::get_actor_args(),
-            'genre'    => self::get_genre_args(),
-            'tag'      => self::get_tag_args(),
-            'director' => self::get_director_args(),
+            'movie'   => self::get_movie_args(),
+            'series'  => self::get_series_args(),
+            'season'  => self::get_season_args(),
+            'episode' => self::get_episode_args(),
+            'tag'     => self::get_tag_args(),
         ];
 
         foreach ( $post_types as $post_type => $args ) {
@@ -93,27 +90,9 @@ class TMDB_Post_Types {
         ] );
     }
 
-    private static function get_actor_args(): array {
-        return self::get_default_args( __( 'Actor', 'tmdb-plugin' ), __( 'Actors', 'tmdb-plugin' ), [
-            'menu_icon' => 'dashicons-groups',
-        ] );
-    }
-
-    private static function get_genre_args(): array {
-        return self::get_default_args( __( 'Genre', 'tmdb-plugin' ), __( 'Genres', 'tmdb-plugin' ), [
-            'menu_icon' => 'dashicons-category',
-        ] );
-    }
-
     private static function get_tag_args(): array {
         return self::get_default_args( __( 'Tag', 'tmdb-plugin' ), __( 'Tags', 'tmdb-plugin' ), [
             'menu_icon' => 'dashicons-tag',
-        ] );
-    }
-
-    private static function get_director_args(): array {
-        return self::get_default_args( __( 'Director', 'tmdb-plugin' ), __( 'Directors', 'tmdb-plugin' ), [
-            'menu_icon' => 'dashicons-id',
         ] );
     }
 }

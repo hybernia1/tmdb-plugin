@@ -7,6 +7,8 @@
 
 namespace TMDB\Plugin\Admin;
 
+use TMDB\Plugin\Taxonomies\TMDB_Taxonomies;
+
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
@@ -618,16 +620,20 @@ class TMDB_Admin_Page_Search {
 
         update_post_meta( $post_id, 'TMDB_poster_path', $poster_path );
 
-        $cast_info = self::import_cast( isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [] );
-        $crew_info = self::import_crew( isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [] );
-        $genre_ids = self::import_genres( isset( $movie_data['genres'] ) && is_array( $movie_data['genres'] ) ? $movie_data['genres'] : [] );
+        $cast_info  = self::import_cast( isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [] );
+        $crew_info  = self::import_crew( isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [] );
+        $genre_info = self::import_genres( isset( $movie_data['genres'] ) && is_array( $movie_data['genres'] ) ? $movie_data['genres'] : [] );
 
-        update_post_meta( $post_id, 'TMDB_actor_ids', $cast_info['actor_ids'] );
+        wp_set_object_terms( $post_id, $cast_info['term_ids'], TMDB_Taxonomies::ACTOR, false );
+        wp_set_object_terms( $post_id, $crew_info['term_ids'], TMDB_Taxonomies::DIRECTOR, false );
+        wp_set_object_terms( $post_id, $genre_info['term_ids'], TMDB_Taxonomies::GENRE, false );
+
+        update_post_meta( $post_id, 'TMDB_actor_ids', $cast_info['term_ids'] );
         update_post_meta( $post_id, 'TMDB_cast', $cast_info['cast'] );
-        update_post_meta( $post_id, 'TMDB_director_ids', $crew_info['director_ids'] );
+        update_post_meta( $post_id, 'TMDB_director_ids', $crew_info['term_ids'] );
         update_post_meta( $post_id, 'TMDB_directors', $crew_info['directors'] );
-        update_post_meta( $post_id, 'TMDB_genre_ids', $genre_ids['genre_ids'] );
-        update_post_meta( $post_id, 'TMDB_genres', $genre_ids['genres'] );
+        update_post_meta( $post_id, 'TMDB_genre_ids', $genre_info['term_ids'] );
+        update_post_meta( $post_id, 'TMDB_genres', $genre_info['genres'] );
 
         return [
             'post_id' => $post_id,
@@ -635,7 +641,7 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Imports cast members as actor posts.
+     * Imports cast members as actor taxonomy terms.
      *
      * @param array<int, array<string, mixed>> $cast Cast members.
      *
@@ -643,7 +649,7 @@ class TMDB_Admin_Page_Search {
      */
     private static function import_cast( array $cast ): array {
         $stored_cast = [];
-        $actor_ids   = [];
+        $term_ids    = [];
 
         usort(
             $cast,
@@ -659,10 +665,10 @@ class TMDB_Admin_Page_Search {
 
             $actor_name = sanitize_text_field( $member['name'] );
             $actor_id   = isset( $member['id'] ) ? (int) $member['id'] : 0;
-            $post_id    = self::upsert_related_post( 'actor', $actor_id, $actor_name );
+            $term_id    = self::upsert_related_term( TMDB_Taxonomies::ACTOR, $actor_id, $actor_name );
 
-            if ( $post_id ) {
-                $actor_ids[] = $post_id;
+            if ( $term_id ) {
+                $term_ids[] = $term_id;
             }
 
             $stored_cast[] = [
@@ -673,8 +679,8 @@ class TMDB_Admin_Page_Search {
         }
 
         return [
-            'actor_ids' => array_map( 'intval', array_unique( $actor_ids ) ),
-            'cast'      => $stored_cast,
+            'term_ids' => array_map( 'intval', array_unique( $term_ids ) ),
+            'cast'     => $stored_cast,
         ];
     }
 
@@ -686,8 +692,8 @@ class TMDB_Admin_Page_Search {
      * @return array<string, array<int, mixed>>
      */
     private static function import_crew( array $crew ): array {
-        $directors    = [];
-        $director_ids = [];
+        $directors = [];
+        $term_ids  = [];
 
         foreach ( $crew as $member ) {
             if ( ! is_array( $member ) ) {
@@ -706,10 +712,10 @@ class TMDB_Admin_Page_Search {
 
             $name        = sanitize_text_field( $member['name'] );
             $director_id = isset( $member['id'] ) ? (int) $member['id'] : 0;
-            $post_id     = self::upsert_related_post( 'director', $director_id, $name );
+            $term_id     = self::upsert_related_term( TMDB_Taxonomies::DIRECTOR, $director_id, $name );
 
-            if ( $post_id ) {
-                $director_ids[] = $post_id;
+            if ( $term_id ) {
+                $term_ids[] = $term_id;
             }
 
             $directors[] = [
@@ -719,33 +725,33 @@ class TMDB_Admin_Page_Search {
         }
 
         return [
-            'director_ids' => array_map( 'intval', array_unique( $director_ids ) ),
-            'directors'    => $directors,
+            'term_ids'  => array_map( 'intval', array_unique( $term_ids ) ),
+            'directors' => $directors,
         ];
     }
 
     /**
-     * Imports TMDB genres as WordPress posts.
+     * Imports TMDB genres as taxonomy terms.
      *
      * @param array<int, array<string, mixed>> $genres Genres payload.
      *
      * @return array<string, array<int, mixed>>
      */
     private static function import_genres( array $genres ): array {
-        $genre_ids = [];
-        $stored    = [];
+        $term_ids = [];
+        $stored   = [];
 
         foreach ( $genres as $genre ) {
             if ( ! is_array( $genre ) || empty( $genre['name'] ) ) {
                 continue;
             }
 
-            $name     = sanitize_text_field( $genre['name'] );
-            $tmdb_id  = isset( $genre['id'] ) ? (int) $genre['id'] : 0;
-            $post_id  = self::upsert_related_post( 'genre', $tmdb_id, $name );
+            $name    = sanitize_text_field( $genre['name'] );
+            $tmdb_id = isset( $genre['id'] ) ? (int) $genre['id'] : 0;
+            $term_id = self::upsert_related_term( TMDB_Taxonomies::GENRE, $tmdb_id, $name );
 
-            if ( $post_id ) {
-                $genre_ids[] = $post_id;
+            if ( $term_id ) {
+                $term_ids[] = $term_id;
             }
 
             $stored[] = [
@@ -754,66 +760,75 @@ class TMDB_Admin_Page_Search {
         }
 
         return [
-            'genre_ids' => array_map( 'intval', array_unique( $genre_ids ) ),
-            'genres'    => $stored,
+            'term_ids' => array_map( 'intval', array_unique( $term_ids ) ),
+            'genres'   => $stored,
         ];
     }
 
     /**
-     * Creates or updates a related post (actor, genre, director).
+     * Creates or updates a related taxonomy term (actor, genre, director).
      *
-     * @param string $post_type Related post type.
-     * @param int    $tmdb_id   TMDB identifier.
-     * @param string $title     Post title.
+     * @param string $taxonomy Taxonomy name.
+     * @param int    $tmdb_id  TMDB identifier.
+     * @param string $name     Term name.
      */
-    private static function upsert_related_post( string $post_type, int $tmdb_id, string $title ): int {
-        if ( '' === $title ) {
+    private static function upsert_related_term( string $taxonomy, int $tmdb_id, string $name ): int {
+        if ( '' === $name ) {
             return 0;
         }
 
-        $existing = [];
+        $term_id = 0;
 
         if ( $tmdb_id > 0 ) {
-            $existing = get_posts(
+            $existing_by_meta = get_terms(
                 [
-                    'post_type'      => $post_type,
-                    'posts_per_page' => 1,
-                    'post_status'    => [ 'publish', 'draft', 'pending', 'future', 'private' ],
-                    'meta_query'     => [
+                    'taxonomy'   => $taxonomy,
+                    'hide_empty' => false,
+                    'fields'     => 'ids',
+                    'number'     => 1,
+                    'meta_query' => [
                         [
                             'key'   => 'TMDB_id',
                             'value' => $tmdb_id,
                         ],
                     ],
-                    'fields'         => 'ids',
                 ]
             );
+
+            if ( ! is_wp_error( $existing_by_meta ) && ! empty( $existing_by_meta ) ) {
+                $term_id = (int) $existing_by_meta[0];
+            }
         }
 
-        $post_data = [
-            'post_title'  => wp_slash( $title ),
-            'post_type'   => $post_type,
-            'post_status' => 'publish',
-        ];
+        if ( 0 === $term_id ) {
+            $existing_by_name = term_exists( $name, $taxonomy );
 
-        if ( ! empty( $existing ) ) {
-            $post_data['ID'] = (int) $existing[0];
-            $post_id         = wp_update_post( $post_data, true );
+            if ( $existing_by_name && ! is_wp_error( $existing_by_name ) ) {
+                $term_id = (int) ( is_array( $existing_by_name ) ? $existing_by_name['term_id'] : $existing_by_name );
+            }
+        }
+
+        if ( 0 === $term_id ) {
+            $created = wp_insert_term( $name, $taxonomy );
+
+            if ( is_wp_error( $created ) ) {
+                return 0;
+            }
+
+            $term_id = (int) $created['term_id'];
         } else {
-            $post_id = wp_insert_post( $post_data, true );
-        }
+            $updated = wp_update_term( $term_id, $taxonomy, [ 'name' => $name ] );
 
-        if ( is_wp_error( $post_id ) ) {
-            return 0;
+            if ( ! is_wp_error( $updated ) && isset( $updated['term_id'] ) ) {
+                $term_id = (int) $updated['term_id'];
+            }
         }
-
-        $post_id = (int) $post_id;
 
         if ( $tmdb_id > 0 ) {
-            update_post_meta( $post_id, 'TMDB_id', $tmdb_id );
+            update_term_meta( $term_id, 'TMDB_id', $tmdb_id );
         }
 
-        return $post_id;
+        return $term_id;
     }
 
     /**
