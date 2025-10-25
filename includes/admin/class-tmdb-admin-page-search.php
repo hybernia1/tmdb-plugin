@@ -66,6 +66,7 @@ class TMDB_Admin_Page_Search {
                 'nonce'        => self::get_nonce(),
                 'imageBaseUrl' => self::IMAGE_BASE_URL,
                 'hasApiKey'    => '' !== sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) ),
+                'initialQuery' => self::get_initial_query(),
                 'strings'      => [
                     'missingQuery'      => __( 'Please enter a movie title to search.', 'tmdb-plugin' ),
                     'missingApiKey'     => __( 'Please configure your TMDB API key before searching.', 'tmdb-plugin' ),
@@ -94,8 +95,14 @@ class TMDB_Admin_Page_Search {
             return;
         }
 
-        $api_key     = sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) );
-        $has_api_key = '' !== $api_key;
+        $api_key       = sanitize_text_field( (string) get_option( 'tmdb_plugin_api_key', '' ) );
+        $has_api_key   = '' !== $api_key;
+        $initial_query = self::get_initial_query();
+        $action_url    = menu_page_url( self::MENU_SLUG, false );
+
+        if ( ! $action_url ) {
+            $action_url = add_query_arg( 'page', self::MENU_SLUG, admin_url( 'admin.php' ) );
+        }
         ?>
         <div class="wrap tmdb-plugin tmdb-plugin__search">
             <h1><?php esc_html_e( 'TMDB Movie Search', 'tmdb-plugin' ); ?></h1>
@@ -109,7 +116,8 @@ class TMDB_Admin_Page_Search {
                 </div>
             <?php endif; ?>
 
-            <form id="tmdb-plugin-search-form" class="tmdb-plugin-search__form" action="<?php echo esc_url( menu_page_url( self::MENU_SLUG, false ) ?: '' ); ?>" method="get" novalidate>
+            <form id="tmdb-plugin-search-form" class="tmdb-plugin-search__form" action="<?php echo esc_url( $action_url ); ?>" method="get" novalidate>
+                <input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
                 <label class="screen-reader-text" for="tmdb-plugin-search-query"><?php esc_html_e( 'Movie title', 'tmdb-plugin' ); ?></label>
                 <input
                     type="text"
@@ -117,6 +125,7 @@ class TMDB_Admin_Page_Search {
                     class="regular-text"
                     name="query"
                     placeholder="<?php echo esc_attr__( 'Search for a movie…', 'tmdb-plugin' ); ?>"
+                    value="<?php echo esc_attr( $initial_query ); ?>"
                     autocomplete="off"
                 />
                 <button type="submit" class="button button-primary"><?php esc_html_e( 'Search', 'tmdb-plugin' ); ?></button>
@@ -756,6 +765,13 @@ class TMDB_Admin_Page_Search {
             'success' => true,
             'data'    => $decoded,
         ];
+    }
+
+    /**
+     * Retrieves the current search query from the request.
+     */
+    private static function get_initial_query(): string {
+        return isset( $_GET['query'] ) ? sanitize_text_field( wp_unslash( $_GET['query'] ) ) : '';
     }
 
     /**
