@@ -21,8 +21,14 @@ class TMDB_Admin_Page_Search {
     private const POSTER_BASE_URL         = 'https://image.tmdb.org/t/p/';
     private const ORIGINAL_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
     private const TMDB_UPLOAD_SUBDIR      = 'tmdb';
+    private const TMDB_MEDIA_CATEGORY     = 'movies';
     private const REQUIRED_TRANSLATION_FIELDS = [ 'title', 'overview' ];
     private const FALLBACK_STRING_FIELDS      = [ 'title', 'overview', 'tagline' ];
+
+    /**
+     * Tracks the TMDB identifier used while adjusting the upload directory.
+     */
+    private static int $current_tmdb_media_id = 0;
 
     /**
      * Registers the search submenu page.
@@ -692,7 +698,7 @@ class TMDB_Admin_Page_Search {
         $previous_poster_path = (string) get_post_meta( $post_id, 'TMDB_poster_path', true );
 
         if ( '' !== $poster_path ) {
-            self::set_featured_image( $post_id, $poster_path, $title, $previous_poster_path );
+            self::set_featured_image( $post_id, $poster_path, $title, $movie_id, $previous_poster_path );
         } else {
             delete_post_meta( $post_id, 'TMDB_poster_size' );
         }
@@ -745,7 +751,7 @@ class TMDB_Admin_Page_Search {
         $external_ids        = self::sanitize_external_ids( isset( $movie_data['external_ids'] ) && is_array( $movie_data['external_ids'] ) ? $movie_data['external_ids'] : [] );
         $primary_backdrops   = isset( $movie_data['images']['backdrops'] ) && is_array( $movie_data['images']['backdrops'] ) ? $movie_data['images']['backdrops'] : [];
 
-        self::import_gallery_images( $post_id, $title, $primary_backdrops, $fallback_backdrops );
+        self::import_gallery_images( $post_id, $title, $primary_backdrops, $fallback_backdrops, $movie_id );
 
         wp_set_object_terms( $post_id, $cast_info['term_ids'], TMDB_Taxonomies::ACTOR, false );
         wp_set_object_terms( $post_id, $crew_info['term_ids'], TMDB_Taxonomies::DIRECTOR, false );
@@ -1711,9 +1717,10 @@ class TMDB_Admin_Page_Search {
      * @param int         $post_id        WordPress post ID.
      * @param string      $poster_path    TMDB poster path.
      * @param string      $title          Movie title.
+     * @param int         $tmdb_id        TMDB identifier for the movie.
      * @param string|null $existing_path  Previously stored TMDB poster path.
      */
-    private static function set_featured_image( int $post_id, string $poster_path, string $title, ?string $existing_path = null ): void {
+    private static function set_featured_image( int $post_id, string $poster_path, string $title, int $tmdb_id, ?string $existing_path = null ): void {
         if ( null === $existing_path ) {
             $existing_path = (string) get_post_meta( $post_id, 'TMDB_poster_path', true );
         }
@@ -1735,7 +1742,7 @@ class TMDB_Admin_Page_Search {
             ? sprintf( __( '%s poster', 'tmdb-plugin' ), $title )
             : __( 'TMDB movie poster', 'tmdb-plugin' );
 
-        $attachment_id = self::sideload_tmdb_image( $poster_url, $post_id, $description );
+        $attachment_id = self::sideload_tmdb_image( $poster_url, $post_id, $description, $tmdb_id );
 
         if ( $attachment_id <= 0 ) {
             return;
@@ -1755,10 +1762,11 @@ class TMDB_Admin_Page_Search {
      *
      * @param int                                $post_id           Post identifier.
      * @param string                             $title             Movie title.
-     * @param array<int, array<string, mixed>>   $primary_backdrops Primary image payload.
-     * @param array<int, array<string, mixed>>   $fallback_backdrops Fallback image payload.
+     * @param array<int, array<string, mixed>>   $primary_backdrops   Primary image payload.
+     * @param array<int, array<string, mixed>>   $fallback_backdrops  Fallback image payload.
+     * @param int                                 $tmdb_id             TMDB identifier for the movie.
      */
-    private static function import_gallery_images( int $post_id, string $title, array $primary_backdrops, array $fallback_backdrops ): void {
+    private static function import_gallery_images( int $post_id, string $title, array $primary_backdrops, array $fallback_backdrops, int $tmdb_id ): void {
         $requested_count = self::get_configured_gallery_image_count();
         $existing_map    = get_post_meta( $post_id, 'TMDB_gallery_images', true );
 
@@ -1819,7 +1827,7 @@ class TMDB_Admin_Page_Search {
                     continue;
                 }
 
-                $attachment_id = self::sideload_tmdb_image( $image_url, $post_id, sprintf( $description_label, $alt_text ) );
+                $attachment_id = self::sideload_tmdb_image( $image_url, $post_id, sprintf( $description_label, $alt_text ), $tmdb_id );
             }
 
             if ( $attachment_id <= 0 ) {
@@ -1957,19 +1965,25 @@ class TMDB_Admin_Page_Search {
 
     /**
      * Downloads an image from TMDB and stores it in the media library.
+     * @param string $image_url   Remote image URL.
+     * @param int    $post_id     WordPress post ID the media should be attached to.
+     * @param string $description Attachment description.
+     * @param int    $tmdb_id     TMDB identifier used to determine the upload subdirectory.
      */
-    private static function sideload_tmdb_image( string $image_url, int $post_id, string $description ): int {
+    private static function sideload_tmdb_image( string $image_url, int $post_id, string $description, int $tmdb_id ): int {
         if ( '' === $image_url ) {
             return 0;
         }
 
         self::ensure_media_dependencies_loaded();
 
+        self::$current_tmdb_media_id = max( 0, $tmdb_id );
         add_filter( 'upload_dir', [ self::class, 'filter_upload_dir_tmdb' ] );
 
         $attachment_id = media_sideload_image( $image_url, $post_id, wp_strip_all_tags( $description ), 'id' );
 
         remove_filter( 'upload_dir', [ self::class, 'filter_upload_dir_tmdb' ] );
+        self::$current_tmdb_media_id = 0;
 
         if ( is_wp_error( $attachment_id ) ) {
             return 0;
@@ -2003,11 +2017,18 @@ class TMDB_Admin_Page_Search {
      * @return array<string, string>
      */
     public static function filter_upload_dir_tmdb( array $dirs ): array {
-        $subdir = '/' . self::TMDB_UPLOAD_SUBDIR;
+        $path_segments = [ self::TMDB_UPLOAD_SUBDIR, self::TMDB_MEDIA_CATEGORY ];
+        $tmdb_id       = max( 0, self::$current_tmdb_media_id );
 
-        $dirs['path']   = trailingslashit( $dirs['basedir'] ) . self::TMDB_UPLOAD_SUBDIR;
-        $dirs['url']    = trailingslashit( $dirs['baseurl'] ) . self::TMDB_UPLOAD_SUBDIR;
-        $dirs['subdir'] = $subdir;
+        if ( $tmdb_id > 0 ) {
+            $path_segments[] = (string) $tmdb_id;
+        }
+
+        $relative_path = implode( '/', $path_segments );
+
+        $dirs['path']   = trailingslashit( $dirs['basedir'] ) . $relative_path;
+        $dirs['url']    = trailingslashit( $dirs['baseurl'] ) . $relative_path;
+        $dirs['subdir'] = '/' . $relative_path;
 
         if ( ! is_dir( $dirs['path'] ) ) {
             wp_mkdir_p( $dirs['path'] );
