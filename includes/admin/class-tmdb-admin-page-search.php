@@ -2052,7 +2052,7 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
-     * Stores the provided external IDs in post meta, maintaining per-ID keys.
+     * Stores the provided external IDs in post meta, keeping a single aggregate entry.
      *
      * @param int                  $post_id      WordPress post identifier.
      * @param array<string, string> $external_ids Sanitized external IDs payload.
@@ -2075,12 +2075,7 @@ class TMDB_Admin_Page_Search {
         foreach ( $all_keys as $key ) {
             $meta_key = self::build_external_id_meta_key( $key );
 
-            if ( isset( $external_ids[ $key ] ) && '' !== $external_ids[ $key ] ) {
-                update_post_meta( $post_id, $meta_key, $external_ids[ $key ] );
-            } else {
-                delete_post_meta( $post_id, $meta_key );
-            }
-
+            delete_post_meta( $post_id, $meta_key );
             self::delete_legacy_external_id_meta( $post_id, $key );
         }
     }
