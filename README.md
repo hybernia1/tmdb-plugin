@@ -3,7 +3,8 @@
 A WordPress plugin that integrates with [The Movie Database (TMDB)](https://www.themoviedb.org/) to bring movie and TV series data to your site.
 
 ## Current features
-- Registers the TMDB Plugin inside WordPress with the basic plugin metadata.
+- Registers dedicated custom post types for movies, series, seasons, episodes, actors, genres, tags, and directors.
+- Provides relationship meta boxes so that each season is linked to a single series and episodes are always tied to the correct series and season.
 - Adds an introductory admin page that outlines the upcoming functionality and gives administrators a starting point.
 
 ## Getting started
