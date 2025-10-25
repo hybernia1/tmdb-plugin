@@ -660,7 +660,12 @@ class TMDB_Admin_Page_Search {
 
         update_post_meta( $post_id, 'TMDB_poster_path', $poster_path );
 
-        $cast_info   = self::import_cast( isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [] );
+        $cast_info   = self::import_cast(
+            isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [],
+            (int) $post_id,
+            $movie_id,
+            $title
+        );
         $crew_info   = self::import_crew( isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [] );
         $genre_info  = self::import_genres( isset( $movie_data['genres'] ) && is_array( $movie_data['genres'] ) ? $movie_data['genres'] : [] );
         $keyword_raw = [];
@@ -716,7 +721,7 @@ class TMDB_Admin_Page_Search {
      *
      * @return array<string, array<int, mixed>>
      */
-    private static function import_cast( array $cast ): array {
+    private static function import_cast( array $cast, int $movie_post_id, int $movie_tmdb_id, string $movie_title ): array {
         $stored_cast = [];
         $term_ids    = [];
 
@@ -740,17 +745,79 @@ class TMDB_Admin_Page_Search {
                 $term_ids[] = $term_id;
             }
 
+            $character = isset( $member['character'] ) ? sanitize_text_field( $member['character'] ) : '';
+
             $stored_cast[] = [
                 'name'      => $actor_name,
-                'character' => isset( $member['character'] ) ? sanitize_text_field( $member['character'] ) : '',
+                'character' => $character,
                 'order'     => isset( $member['order'] ) ? (int) $member['order'] : 0,
             ];
+
+            if ( $term_id ) {
+                self::store_actor_role( $term_id, $movie_post_id, $movie_tmdb_id, $movie_title, $character );
+            }
         }
 
         return [
             'term_ids' => array_map( 'intval', array_unique( $term_ids ) ),
             'cast'     => $stored_cast,
         ];
+    }
+
+    /**
+     * Stores the relationship between an actor and their role for the imported movie.
+     */
+    private static function store_actor_role( int $term_id, int $movie_post_id, int $movie_tmdb_id, string $movie_title, string $character ): void {
+        if ( $term_id <= 0 || '' === $character ) {
+            return;
+        }
+
+        $movie_tmdb_id = max( 0, $movie_tmdb_id );
+        $movie_post_id = max( 0, $movie_post_id );
+        $movie_title   = sanitize_text_field( $movie_title );
+        $character     = sanitize_text_field( $character );
+
+        if ( $movie_tmdb_id <= 0 && $movie_post_id <= 0 ) {
+            return;
+        }
+
+        $existing_roles = get_term_meta( $term_id, 'TMDB_roles', true );
+
+        if ( ! is_array( $existing_roles ) ) {
+            $existing_roles = [];
+        }
+
+        $updated = false;
+
+        foreach ( $existing_roles as &$role ) {
+            if ( ! is_array( $role ) ) {
+                continue;
+            }
+
+            if ( isset( $role['movie_tmdb_id'] ) && (int) $role['movie_tmdb_id'] === $movie_tmdb_id ) {
+                $role = [
+                    'movie_tmdb_id' => $movie_tmdb_id,
+                    'movie_post_id' => $movie_post_id,
+                    'movie_title'   => $movie_title,
+                    'character'     => $character,
+                ];
+                $updated = true;
+                break;
+            }
+        }
+
+        unset( $role );
+
+        if ( ! $updated ) {
+            $existing_roles[] = [
+                'movie_tmdb_id' => $movie_tmdb_id,
+                'movie_post_id' => $movie_post_id,
+                'movie_title'   => $movie_title,
+                'character'     => $character,
+            ];
+        }
+
+        update_term_meta( $term_id, 'TMDB_roles', array_values( $existing_roles ) );
     }
 
     /**
