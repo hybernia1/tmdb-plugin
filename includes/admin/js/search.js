@@ -20,7 +20,8 @@
     let totalPages = 0;
     let loading = false;
 
-    const { strings, ajaxUrl, nonce, imageBaseUrl, hasApiKey } = config;
+    const { strings, ajaxUrl, nonce, imageBaseUrl, hasApiKey, initialQuery: configInitialQuery } = config;
+    const initialQuery = typeof configInitialQuery === 'string' ? configInitialQuery.trim() : '';
 
     const setStatus = ( message = '', type = '' ) => {
         statusEl.textContent = message;
@@ -304,4 +305,10 @@
 
         importMovie( movieId, target );
     } );
+
+    if ( initialQuery ) {
+        queryInput.value = initialQuery;
+        currentQuery = initialQuery;
+        fetchResults( 1 );
+    }
 })();
