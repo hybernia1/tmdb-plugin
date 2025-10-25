@@ -20,6 +20,7 @@ class TMDB_Admin_Page_Search {
     private const MENU_SLUG               = 'tmdb-plugin-search';
     private const POSTER_BASE_URL         = 'https://image.tmdb.org/t/p/';
     private const ORIGINAL_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
+    private const TMDB_UPLOAD_SUBDIR      = 'tmdb';
     private const REQUIRED_TRANSLATION_FIELDS = [ 'title', 'overview' ];
     private const FALLBACK_STRING_FIELDS      = [ 'title', 'overview', 'tagline' ];
 
@@ -553,7 +554,7 @@ class TMDB_Admin_Page_Search {
             [
                 'api_key'            => $api_key,
                 'language'           => $language,
-                'append_to_response' => 'credits,videos,keywords,websites,external_ids',
+                'append_to_response' => 'credits,videos,keywords,websites,external_ids,images',
                 'include_image_language' => self::build_language_list( $language, $fallback_language, true ),
                 'include_video_language' => self::build_language_list( $language, $fallback_language, true ),
             ]
@@ -572,7 +573,7 @@ class TMDB_Admin_Page_Search {
                 [
                     'api_key'            => $api_key,
                     'language'           => $fallback_language,
-                    'append_to_response' => 'credits,videos,keywords,websites,external_ids',
+                    'append_to_response' => 'credits,videos,keywords,websites,external_ids,images',
                     'include_image_language' => self::build_language_list( $fallback_language, $language, true ),
                     'include_video_language' => self::build_language_list( $fallback_language, $language, true ),
                 ]
@@ -698,12 +699,17 @@ class TMDB_Admin_Page_Search {
 
         update_post_meta( $post_id, 'TMDB_poster_path', $poster_path );
 
-        $fallback_cast = [];
-        $fallback_crew = [];
+        $fallback_cast      = [];
+        $fallback_crew      = [];
+        $fallback_backdrops = [];
 
         if ( null !== $fallback_movie && isset( $fallback_movie['credits'] ) && is_array( $fallback_movie['credits'] ) ) {
             $fallback_cast = isset( $fallback_movie['credits']['cast'] ) && is_array( $fallback_movie['credits']['cast'] ) ? $fallback_movie['credits']['cast'] : [];
             $fallback_crew = isset( $fallback_movie['credits']['crew'] ) && is_array( $fallback_movie['credits']['crew'] ) ? $fallback_movie['credits']['crew'] : [];
+        }
+
+        if ( null !== $fallback_movie && isset( $fallback_movie['images'] ) && is_array( $fallback_movie['images'] ) ) {
+            $fallback_backdrops = isset( $fallback_movie['images']['backdrops'] ) && is_array( $fallback_movie['images']['backdrops'] ) ? $fallback_movie['images']['backdrops'] : [];
         }
 
         $cast_info   = self::import_cast(
@@ -735,8 +741,11 @@ class TMDB_Admin_Page_Search {
         $websites_raw      = self::extract_websites_payload( $movie_data );
         $websites_formatted = self::format_websites( $websites_raw );
         $primary_website    = self::extract_primary_website( $websites_formatted );
-        $websites_dump_json = self::serialize_websites_payload( $websites_raw );
-        $external_ids       = self::sanitize_external_ids( isset( $movie_data['external_ids'] ) && is_array( $movie_data['external_ids'] ) ? $movie_data['external_ids'] : [] );
+        $websites_dump_json  = self::serialize_websites_payload( $websites_raw );
+        $external_ids        = self::sanitize_external_ids( isset( $movie_data['external_ids'] ) && is_array( $movie_data['external_ids'] ) ? $movie_data['external_ids'] : [] );
+        $primary_backdrops   = isset( $movie_data['images']['backdrops'] ) && is_array( $movie_data['images']['backdrops'] ) ? $movie_data['images']['backdrops'] : [];
+
+        self::import_gallery_images( $post_id, $title, $primary_backdrops, $fallback_backdrops );
 
         wp_set_object_terms( $post_id, $cast_info['term_ids'], TMDB_Taxonomies::ACTOR, false );
         wp_set_object_terms( $post_id, $crew_info['term_ids'], TMDB_Taxonomies::DIRECTOR, false );
@@ -1475,6 +1484,8 @@ class TMDB_Admin_Page_Search {
             } else {
                 delete_post_meta( $post_id, $meta_key );
             }
+
+            self::delete_legacy_external_id_meta( $post_id, $key );
         }
     }
 
@@ -1482,6 +1493,32 @@ class TMDB_Admin_Page_Search {
      * Builds a consistent post meta key for a given external identifier name.
      */
     private static function build_external_id_meta_key( string $id_key ): string {
+        $normalized = sanitize_key( $id_key );
+
+        if ( '' === $normalized ) {
+            $normalized = sanitize_title( (string) $id_key );
+        }
+
+        if ( '' === $normalized ) {
+            $normalized = 'external_id';
+        }
+
+        return 'TMDB_external_ids_' . $normalized;
+    }
+
+    /**
+     * Removes legacy external ID meta keys stored in previous versions.
+     */
+    private static function delete_legacy_external_id_meta( int $post_id, string $id_key ): void {
+        $legacy_key = self::build_legacy_external_id_meta_key( $id_key );
+
+        delete_post_meta( $post_id, $legacy_key );
+    }
+
+    /**
+     * Builds the legacy post meta key used for external identifiers.
+     */
+    private static function build_legacy_external_id_meta_key( string $id_key ): string {
         $normalized = preg_replace( '/[^a-z0-9]+/i', '_', $id_key );
         $normalized = is_string( $normalized ) ? trim( $normalized, '_' ) : '';
 
@@ -1694,18 +1731,289 @@ class TMDB_Admin_Page_Search {
             return;
         }
 
+        $description = '' !== $title
+            ? sprintf( __( '%s poster', 'tmdb-plugin' ), $title )
+            : __( 'TMDB movie poster', 'tmdb-plugin' );
+
+        $attachment_id = self::sideload_tmdb_image( $poster_url, $post_id, $description );
+
+        if ( $attachment_id <= 0 ) {
+            return;
+        }
+
+        set_post_thumbnail( $post_id, $attachment_id );
+
+        if ( '' !== $title ) {
+            update_post_meta( $attachment_id, '_wp_attachment_image_alt', wp_strip_all_tags( $title ) );
+        }
+
+        update_post_meta( $post_id, 'TMDB_poster_size', $poster_size );
+    }
+
+    /**
+     * Imports additional gallery images for a movie post.
+     *
+     * @param int                                $post_id           Post identifier.
+     * @param string                             $title             Movie title.
+     * @param array<int, array<string, mixed>>   $primary_backdrops Primary image payload.
+     * @param array<int, array<string, mixed>>   $fallback_backdrops Fallback image payload.
+     */
+    private static function import_gallery_images( int $post_id, string $title, array $primary_backdrops, array $fallback_backdrops ): void {
+        $requested_count = self::get_configured_gallery_image_count();
+        $existing_map    = get_post_meta( $post_id, 'TMDB_gallery_images', true );
+
+        if ( ! is_array( $existing_map ) ) {
+            $existing_map = [];
+        }
+
+        $configured_size = self::get_configured_backdrop_size();
+        $previous_size   = (string) get_post_meta( $post_id, 'TMDB_gallery_image_size', true );
+
+        if ( $requested_count <= 0 ) {
+            self::delete_gallery_attachments( $existing_map );
+            delete_post_meta( $post_id, 'TMDB_gallery_images' );
+            delete_post_meta( $post_id, 'TMDB_gallery_image_ids' );
+            delete_post_meta( $post_id, 'TMDB_gallery_image_size' );
+
+            return;
+        }
+
+        $candidates = self::prepare_backdrop_candidates( $primary_backdrops, $fallback_backdrops );
+
+        if ( empty( $candidates ) ) {
+            self::delete_gallery_attachments( $existing_map );
+            delete_post_meta( $post_id, 'TMDB_gallery_images' );
+            delete_post_meta( $post_id, 'TMDB_gallery_image_ids' );
+            delete_post_meta( $post_id, 'TMDB_gallery_image_size' );
+
+            return;
+        }
+
+        if ( $previous_size !== $configured_size && ! empty( $existing_map ) ) {
+            self::delete_gallery_attachments( $existing_map );
+            $existing_map = [];
+        }
+
+        $selected          = array_slice( $candidates, 0, $requested_count );
+        $new_map           = [];
+        $attachment_ids    = [];
+        $alt_text          = '' !== $title ? $title : __( 'TMDB movie', 'tmdb-plugin' );
+        $description_label = __( '%s backdrop', 'tmdb-plugin' );
+
+        foreach ( $selected as $image ) {
+            $path          = $image['file_path'];
+            $attachment_id = isset( $existing_map[ $path ] ) ? (int) $existing_map[ $path ] : 0;
+
+            if ( $attachment_id > 0 ) {
+                $attachment_post = get_post( $attachment_id );
+
+                if ( ! $attachment_post || 'attachment' !== $attachment_post->post_type ) {
+                    $attachment_id = 0;
+                }
+            }
+
+            if ( $attachment_id <= 0 ) {
+                $image_url = self::build_backdrop_url( $path );
+
+                if ( '' === $image_url ) {
+                    continue;
+                }
+
+                $attachment_id = self::sideload_tmdb_image( $image_url, $post_id, sprintf( $description_label, $alt_text ) );
+            }
+
+            if ( $attachment_id <= 0 ) {
+                continue;
+            }
+
+            $new_map[ $path ]   = $attachment_id;
+            $attachment_ids[]   = $attachment_id;
+
+            update_post_meta( $attachment_id, '_wp_attachment_image_alt', wp_strip_all_tags( $alt_text ) );
+        }
+
+        if ( empty( $new_map ) ) {
+            self::delete_gallery_attachments( $existing_map );
+            delete_post_meta( $post_id, 'TMDB_gallery_images' );
+            delete_post_meta( $post_id, 'TMDB_gallery_image_ids' );
+            delete_post_meta( $post_id, 'TMDB_gallery_image_size' );
+
+            return;
+        }
+
+        $previous_ids = array_map( 'intval', array_values( $existing_map ) );
+        $removed_ids  = array_diff( $previous_ids, $attachment_ids );
+
+        if ( ! empty( $removed_ids ) ) {
+            self::delete_gallery_attachments( $removed_ids );
+        }
+
+        update_post_meta( $post_id, 'TMDB_gallery_images', $new_map );
+        update_post_meta( $post_id, 'TMDB_gallery_image_ids', $attachment_ids );
+        update_post_meta( $post_id, 'TMDB_gallery_image_size', $configured_size );
+    }
+
+    /**
+     * Normalises backdrop payloads into a list of import candidates.
+     *
+     * @param array<int, array<string, mixed>> $primary   Backdrop payload for the primary language.
+     * @param array<int, array<string, mixed>> $fallback  Backdrop payload for the fallback language.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function prepare_backdrop_candidates( array $primary, array $fallback ): array {
+        $candidates = [];
+
+        foreach ( $primary as $backdrop ) {
+            $sanitized = self::sanitize_backdrop_entry( $backdrop );
+
+            if ( null === $sanitized ) {
+                continue;
+            }
+
+            $candidates[ $sanitized['file_path'] ] = $sanitized;
+        }
+
+        foreach ( $fallback as $backdrop ) {
+            $sanitized = self::sanitize_backdrop_entry( $backdrop );
+
+            if ( null === $sanitized || isset( $candidates[ $sanitized['file_path'] ] ) ) {
+                continue;
+            }
+
+            $candidates[ $sanitized['file_path'] ] = $sanitized;
+        }
+
+        if ( empty( $candidates ) ) {
+            return [];
+        }
+
+        uasort(
+            $candidates,
+            static function ( array $a, array $b ): int {
+                $vote_comparison = $b['vote_average'] <=> $a['vote_average'];
+
+                if ( 0 !== $vote_comparison ) {
+                    return $vote_comparison;
+                }
+
+                $count_comparison = $b['vote_count'] <=> $a['vote_count'];
+
+                if ( 0 !== $count_comparison ) {
+                    return $count_comparison;
+                }
+
+                return $b['width'] <=> $a['width'];
+            }
+        );
+
+        return array_values( $candidates );
+    }
+
+    /**
+     * Sanitizes a single backdrop payload entry.
+     *
+     * @param array<string, mixed> $backdrop Backdrop payload.
+     */
+    private static function sanitize_backdrop_entry( $backdrop ): ?array {
+        if ( ! is_array( $backdrop ) || empty( $backdrop['file_path'] ) ) {
+            return null;
+        }
+
+        $path = sanitize_text_field( ltrim( (string) $backdrop['file_path'], '/' ) );
+
+        if ( '' === $path ) {
+            return null;
+        }
+
+        return [
+            'file_path'    => $path,
+            'vote_average' => isset( $backdrop['vote_average'] ) ? (float) $backdrop['vote_average'] : 0.0,
+            'vote_count'   => isset( $backdrop['vote_count'] ) ? (int) $backdrop['vote_count'] : 0,
+            'width'        => isset( $backdrop['width'] ) ? (int) $backdrop['width'] : 0,
+        ];
+    }
+
+    /**
+     * Deletes gallery attachments that are no longer required.
+     *
+     * @param array<int|string, int|string> $attachments Attachment identifiers.
+     */
+    private static function delete_gallery_attachments( array $attachments ): void {
+        foreach ( $attachments as $attachment ) {
+            $attachment_id = (int) $attachment;
+
+            if ( $attachment_id <= 0 ) {
+                continue;
+            }
+
+            if ( 'attachment' !== get_post_type( $attachment_id ) ) {
+                continue;
+            }
+
+            wp_delete_attachment( $attachment_id, true );
+        }
+    }
+
+    /**
+     * Downloads an image from TMDB and stores it in the media library.
+     */
+    private static function sideload_tmdb_image( string $image_url, int $post_id, string $description ): int {
+        if ( '' === $image_url ) {
+            return 0;
+        }
+
+        self::ensure_media_dependencies_loaded();
+
+        add_filter( 'upload_dir', [ self::class, 'filter_upload_dir_tmdb' ] );
+
+        $attachment_id = media_sideload_image( $image_url, $post_id, wp_strip_all_tags( $description ), 'id' );
+
+        remove_filter( 'upload_dir', [ self::class, 'filter_upload_dir_tmdb' ] );
+
+        if ( is_wp_error( $attachment_id ) ) {
+            return 0;
+        }
+
+        return (int) $attachment_id;
+    }
+
+    /**
+     * Ensures WordPress media helper files are loaded before sideloading assets.
+     */
+    private static function ensure_media_dependencies_loaded(): void {
+        static $loaded = false;
+
+        if ( $loaded ) {
+            return;
+        }
+
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
 
-        $attachment_id = media_sideload_image( $poster_url, $post_id, wp_strip_all_tags( $title ), 'id' );
+        $loaded = true;
+    }
 
-        if ( is_wp_error( $attachment_id ) ) {
-            return;
+    /**
+     * Adjusts the upload directory so TMDB media is stored in a dedicated folder.
+     *
+     * @param array<string, string> $dirs Upload directory configuration.
+     *
+     * @return array<string, string>
+     */
+    public static function filter_upload_dir_tmdb( array $dirs ): array {
+        $subdir = '/' . self::TMDB_UPLOAD_SUBDIR;
+
+        $dirs['path']   = trailingslashit( $dirs['basedir'] ) . self::TMDB_UPLOAD_SUBDIR;
+        $dirs['url']    = trailingslashit( $dirs['baseurl'] ) . self::TMDB_UPLOAD_SUBDIR;
+        $dirs['subdir'] = $subdir;
+
+        if ( ! is_dir( $dirs['path'] ) ) {
+            wp_mkdir_p( $dirs['path'] );
         }
 
-        set_post_thumbnail( $post_id, (int) $attachment_id );
-        update_post_meta( $post_id, 'TMDB_poster_size', $poster_size );
+        return $dirs;
     }
 
     /**
@@ -2085,6 +2393,25 @@ class TMDB_Admin_Page_Search {
     }
 
     /**
+     * Builds a backdrop URL using the configured gallery image size.
+     */
+    private static function build_backdrop_url( string $backdrop_path ): string {
+        $backdrop_path = ltrim( $backdrop_path, '/' );
+
+        if ( '' === $backdrop_path ) {
+            return '';
+        }
+
+        $size = self::get_configured_backdrop_size();
+
+        if ( 'original' === $size ) {
+            return trailingslashit( self::ORIGINAL_IMAGE_BASE_URL ) . $backdrop_path;
+        }
+
+        return trailingslashit( self::POSTER_BASE_URL . $size ) . $backdrop_path;
+    }
+
+    /**
      * Returns the poster size configured in plugin settings.
      */
     private static function get_configured_poster_size(): string {
@@ -2096,6 +2423,37 @@ class TMDB_Admin_Page_Search {
         }
 
         return TMDB_Admin_Page_Config::DEFAULT_POSTER_SIZE;
+    }
+
+    /**
+     * Returns the configured gallery image size.
+     */
+    private static function get_configured_backdrop_size(): string {
+        $sizes      = TMDB_Admin_Page_Config::get_backdrop_sizes();
+        $configured = sanitize_text_field( (string) get_option( 'tmdb_plugin_backdrop_size', TMDB_Admin_Page_Config::DEFAULT_BACKDROP_SIZE ) );
+
+        if ( isset( $sizes[ $configured ] ) ) {
+            return $configured;
+        }
+
+        return TMDB_Admin_Page_Config::DEFAULT_BACKDROP_SIZE;
+    }
+
+    /**
+     * Returns the number of gallery images configured by the user.
+     */
+    private static function get_configured_gallery_image_count(): int {
+        $count = (int) get_option( 'tmdb_plugin_gallery_image_count', TMDB_Admin_Page_Config::DEFAULT_GALLERY_IMAGE_COUNT );
+
+        if ( $count < 0 ) {
+            return TMDB_Admin_Page_Config::DEFAULT_GALLERY_IMAGE_COUNT;
+        }
+
+        if ( $count > TMDB_Admin_Page_Config::MAX_GALLERY_IMAGE_COUNT ) {
+            return TMDB_Admin_Page_Config::MAX_GALLERY_IMAGE_COUNT;
+        }
+
+        return $count;
     }
 
     /**

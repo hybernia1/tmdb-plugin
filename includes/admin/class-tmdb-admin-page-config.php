@@ -15,7 +15,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Admin page for configuring TMDB API access.
  */
 class TMDB_Admin_Page_Config {
-    public const DEFAULT_POSTER_SIZE = 'w185';
+    public const DEFAULT_POSTER_SIZE          = 'w185';
+    public const DEFAULT_BACKDROP_SIZE        = 'w780';
+    public const DEFAULT_GALLERY_IMAGE_COUNT  = 0;
+    public const MAX_GALLERY_IMAGE_COUNT      = 20;
 
     /**
      * Registers the configuration admin page.
@@ -41,20 +44,25 @@ class TMDB_Admin_Page_Config {
 
         $languages = self::get_available_languages();
 
-        $poster_sizes = self::get_poster_sizes();
+        $poster_sizes   = self::get_poster_sizes();
+        $backdrop_sizes = self::get_backdrop_sizes();
 
         $api_key           = get_option( 'tmdb_plugin_api_key', '' );
         $language          = get_option( 'tmdb_plugin_language', 'en-US' );
         $fallback_language = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
         $poster_size       = get_option( 'tmdb_plugin_poster_size', self::DEFAULT_POSTER_SIZE );
+        $backdrop_size     = get_option( 'tmdb_plugin_backdrop_size', self::DEFAULT_BACKDROP_SIZE );
+        $gallery_image_count = (int) get_option( 'tmdb_plugin_gallery_image_count', self::DEFAULT_GALLERY_IMAGE_COUNT );
 
         if ( isset( $_POST['tmdb_plugin_settings_submit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-            self::handle_form_submission( $languages, $poster_sizes );
+            self::handle_form_submission( $languages, $poster_sizes, $backdrop_sizes );
 
             $api_key           = get_option( 'tmdb_plugin_api_key', '' );
             $language          = get_option( 'tmdb_plugin_language', 'en-US' );
             $fallback_language = get_option( 'tmdb_plugin_fallback_language', 'en-US' );
             $poster_size       = get_option( 'tmdb_plugin_poster_size', self::DEFAULT_POSTER_SIZE );
+            $backdrop_size     = get_option( 'tmdb_plugin_backdrop_size', self::DEFAULT_BACKDROP_SIZE );
+            $gallery_image_count = (int) get_option( 'tmdb_plugin_gallery_image_count', self::DEFAULT_GALLERY_IMAGE_COUNT );
         }
 
         settings_errors( 'tmdb_plugin_messages' );
@@ -146,6 +154,45 @@ class TMDB_Admin_Page_Config {
                                 </p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="tmdb_plugin_gallery_image_count">
+                                    <?php esc_html_e( 'Gallery Images', 'tmdb-plugin' ); ?>
+                                </label>
+                            </th>
+                            <td>
+                                <input
+                                    type="number"
+                                    name="tmdb_plugin_gallery_image_count"
+                                    id="tmdb_plugin_gallery_image_count"
+                                    value="<?php echo esc_attr( $gallery_image_count ); ?>"
+                                    min="0"
+                                    max="<?php echo esc_attr( self::MAX_GALLERY_IMAGE_COUNT ); ?>"
+                                />
+                                <p class="description">
+                                    <?php esc_html_e( 'Select how many additional TMDB images should be imported for each movie.', 'tmdb-plugin' ); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="tmdb_plugin_backdrop_size">
+                                    <?php esc_html_e( 'Gallery Image Quality', 'tmdb-plugin' ); ?>
+                                </label>
+                            </th>
+                            <td>
+                                <select name="tmdb_plugin_backdrop_size" id="tmdb_plugin_backdrop_size">
+                                    <?php foreach ( $backdrop_sizes as $size_key => $label ) : ?>
+                                        <option value="<?php echo esc_attr( $size_key ); ?>" <?php selected( $backdrop_size, $size_key ); ?>>
+                                            <?php echo esc_html( $label ); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e( 'Choose the TMDB image size used when importing gallery images.', 'tmdb-plugin' ); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
                 <input type="hidden" name="tmdb_plugin_settings_submit" value="1" />
@@ -159,9 +206,10 @@ class TMDB_Admin_Page_Config {
      * Handles saving configuration values.
      *
      * @param array<string, string> $languages List of supported languages.
-     * @param array<string, string> $poster_sizes List of supported poster sizes.
+     * @param array<string, string> $poster_sizes   List of supported poster sizes.
+     * @param array<string, string> $backdrop_sizes List of supported backdrop sizes.
      */
-    private static function handle_form_submission( array $languages, array $poster_sizes ): void {
+    private static function handle_form_submission( array $languages, array $poster_sizes, array $backdrop_sizes ): void {
         if ( ! isset( $_POST['tmdb_plugin_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['tmdb_plugin_nonce'] ), 'tmdb_plugin_save_settings' ) ) {
             return;
         }
@@ -174,6 +222,8 @@ class TMDB_Admin_Page_Config {
         $language = isset( $_POST['tmdb_plugin_language'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_language'] ) ) : '';
         $fallback = isset( $_POST['tmdb_plugin_fallback_language'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_fallback_language'] ) ) : '';
         $poster   = isset( $_POST['tmdb_plugin_poster_size'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_poster_size'] ) ) : self::DEFAULT_POSTER_SIZE;
+        $backdrop = isset( $_POST['tmdb_plugin_backdrop_size'] ) ? sanitize_text_field( wp_unslash( $_POST['tmdb_plugin_backdrop_size'] ) ) : self::DEFAULT_BACKDROP_SIZE;
+        $gallery_count = isset( $_POST['tmdb_plugin_gallery_image_count'] ) ? (int) $_POST['tmdb_plugin_gallery_image_count'] : self::DEFAULT_GALLERY_IMAGE_COUNT;
 
         if ( ! array_key_exists( $language, $languages ) ) {
             $language = 'en-US';
@@ -187,10 +237,24 @@ class TMDB_Admin_Page_Config {
             $poster = self::DEFAULT_POSTER_SIZE;
         }
 
+        if ( ! array_key_exists( $backdrop, $backdrop_sizes ) ) {
+            $backdrop = self::DEFAULT_BACKDROP_SIZE;
+        }
+
+        if ( $gallery_count < 0 ) {
+            $gallery_count = self::DEFAULT_GALLERY_IMAGE_COUNT;
+        }
+
+        if ( $gallery_count > self::MAX_GALLERY_IMAGE_COUNT ) {
+            $gallery_count = self::MAX_GALLERY_IMAGE_COUNT;
+        }
+
         update_option( 'tmdb_plugin_api_key', $api_key );
         update_option( 'tmdb_plugin_language', $language );
         update_option( 'tmdb_plugin_fallback_language', $fallback );
         update_option( 'tmdb_plugin_poster_size', $poster );
+        update_option( 'tmdb_plugin_backdrop_size', $backdrop );
+        update_option( 'tmdb_plugin_gallery_image_count', $gallery_count );
 
         add_settings_error(
             'tmdb_plugin_messages',
@@ -213,6 +277,20 @@ class TMDB_Admin_Page_Config {
             'w342'     => __( 'Width 342px', 'tmdb-plugin' ),
             'w500'     => __( 'Width 500px', 'tmdb-plugin' ),
             'w780'     => __( 'Width 780px', 'tmdb-plugin' ),
+            'original' => __( 'Original', 'tmdb-plugin' ),
+        ];
+    }
+
+    /**
+     * Returns the supported TMDB backdrop sizes for selection.
+     *
+     * @return array<string, string>
+     */
+    public static function get_backdrop_sizes(): array {
+        return [
+            'w300'    => __( 'Width 300px', 'tmdb-plugin' ),
+            'w780'    => __( 'Width 780px', 'tmdb-plugin' ),
+            'w1280'   => __( 'Width 1280px', 'tmdb-plugin' ),
             'original' => __( 'Original', 'tmdb-plugin' ),
         ];
     }
