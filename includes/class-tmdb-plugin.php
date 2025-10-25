@@ -7,6 +7,7 @@
 
 namespace TMDB\Plugin;
 
+use TMDB\Plugin\Admin\TMDB_Admin_Page_Api_Test;
 use TMDB\Plugin\Admin\TMDB_Admin_Page_Config;
 use TMDB\Plugin\Meta\TMDB_Meta_Boxes;
 use TMDB\Plugin\Post_Types\TMDB_Post_Types;
@@ -45,5 +46,8 @@ class TMDB_Plugin {
         add_action( 'add_meta_boxes', [ TMDB_Meta_Boxes::class, 'register' ] );
         add_action( 'save_post', [ TMDB_Meta_Boxes::class, 'save' ], 10, 2 );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Config::class, 'register' ] );
+        add_action( 'admin_menu', [ TMDB_Admin_Page_Api_Test::class, 'register' ] );
+        add_action( 'admin_enqueue_scripts', [ TMDB_Admin_Page_Api_Test::class, 'enqueue_assets' ] );
+        add_action( 'wp_ajax_tmdb_plugin_api_test_search', [ TMDB_Admin_Page_Api_Test::class, 'handle_search' ] );
     }
 }
