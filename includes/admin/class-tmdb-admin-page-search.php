@@ -328,10 +328,10 @@ class TMDB_Admin_Page_Search {
             ];
         }
 
-        $movie_response = self::fetch_movie_details( $movie_id, $language, $api_key );
+        $movie_response = self::fetch_movie_details( $movie_id, $language, $api_key, $fallback_language );
 
         if ( ! $movie_response['success'] && $fallback_language !== $language ) {
-            $movie_response = self::fetch_movie_details( $movie_id, $fallback_language, $api_key );
+            $movie_response = self::fetch_movie_details( $movie_id, $fallback_language, $api_key, $language );
         }
 
         if ( ! $movie_response['success'] ) {
@@ -534,19 +534,22 @@ class TMDB_Admin_Page_Search {
     /**
      * Fetches detailed information about a movie from TMDB.
      *
-     * @param int    $movie_id Movie identifier.
-     * @param string $language Requested language.
-     * @param string $api_key  TMDB API key.
+     * @param int         $movie_id         Movie identifier.
+     * @param string      $language         Requested language.
+     * @param string      $api_key          TMDB API key.
+     * @param string|null $fallback_language Optional fallback language to include in related payloads.
      *
      * @return array<string, mixed>
      */
-    private static function fetch_movie_details( int $movie_id, string $language, string $api_key ): array {
+    private static function fetch_movie_details( int $movie_id, string $language, string $api_key, ?string $fallback_language = null ): array {
         $response = self::request_tmdb(
             sprintf( 'https://api.themoviedb.org/3/movie/%d', $movie_id ),
             [
                 'api_key'            => $api_key,
                 'language'           => $language,
                 'append_to_response' => 'credits,videos,keywords',
+                'include_image_language' => self::build_language_list( $language, $fallback_language, true ),
+                'include_video_language' => self::build_language_list( $language, $fallback_language, true ),
             ]
         );
 
@@ -630,6 +633,8 @@ class TMDB_Admin_Page_Search {
 
         if ( '' !== $poster_path ) {
             self::set_featured_image( $post_id, $poster_path, $title, $previous_poster_path );
+        } else {
+            delete_post_meta( $post_id, 'TMDB_poster_size' );
         }
 
         update_post_meta( $post_id, 'TMDB_poster_path', $poster_path );
@@ -919,8 +924,7 @@ class TMDB_Admin_Page_Search {
             return 0;
         }
 
-        $term_id = 0;
-        $slug    = self::generate_term_slug( $taxonomy, $tmdb_id, $name );
+        $slug = self::generate_term_slug( $taxonomy, $tmdb_id, $name );
 
         if ( $tmdb_id > 0 ) {
             $existing_by_meta = get_terms(
@@ -939,45 +943,35 @@ class TMDB_Admin_Page_Search {
             );
 
             if ( ! is_wp_error( $existing_by_meta ) && ! empty( $existing_by_meta ) ) {
-                $term_id = (int) $existing_by_meta[0];
+                return (int) $existing_by_meta[0];
             }
         }
 
-        if ( 0 === $term_id ) {
-            $existing_by_name = term_exists( $name, $taxonomy );
+        $existing_by_name = term_exists( $name, $taxonomy );
 
-            if ( $existing_by_name && ! is_wp_error( $existing_by_name ) ) {
-                $term_id = (int) ( is_array( $existing_by_name ) ? $existing_by_name['term_id'] : $existing_by_name );
+        if ( $existing_by_name && ! is_wp_error( $existing_by_name ) ) {
+            $term_id = (int) ( is_array( $existing_by_name ) ? $existing_by_name['term_id'] : $existing_by_name );
+
+            if ( $tmdb_id > 0 ) {
+                update_term_meta( $term_id, 'TMDB_id', $tmdb_id );
             }
+
+            return $term_id;
         }
 
-        if ( 0 === $term_id ) {
-            $insert_args = [];
+        $insert_args = [];
 
-            if ( '' !== $slug ) {
-                $insert_args['slug'] = $slug;
-            }
-
-            $created = wp_insert_term( $name, $taxonomy, $insert_args );
-
-            if ( is_wp_error( $created ) ) {
-                return 0;
-            }
-
-            $term_id = (int) $created['term_id'];
-        } else {
-            $update_args = [ 'name' => $name ];
-
-            if ( '' !== $slug ) {
-                $update_args['slug'] = $slug;
-            }
-
-            $updated = wp_update_term( $term_id, $taxonomy, $update_args );
-
-            if ( ! is_wp_error( $updated ) && isset( $updated['term_id'] ) ) {
-                $term_id = (int) $updated['term_id'];
-            }
+        if ( '' !== $slug ) {
+            $insert_args['slug'] = $slug;
         }
+
+        $created = wp_insert_term( $name, $taxonomy, $insert_args );
+
+        if ( is_wp_error( $created ) ) {
+            return 0;
+        }
+
+        $term_id = (int) $created['term_id'];
 
         if ( $tmdb_id > 0 ) {
             update_term_meta( $term_id, 'TMDB_id', $tmdb_id );
@@ -994,7 +988,7 @@ class TMDB_Admin_Page_Search {
             return '';
         }
 
-        if ( $tmdb_id > 0 && in_array( $taxonomy, [ TMDB_Taxonomies::ACTOR, TMDB_Taxonomies::DIRECTOR ], true ) ) {
+        if ( $tmdb_id > 0 && in_array( $taxonomy, [ TMDB_Taxonomies::ACTOR, TMDB_Taxonomies::DIRECTOR, TMDB_Taxonomies::KEYWORD ], true ) ) {
             return sanitize_title( $tmdb_id . '-' . $name );
         }
 
@@ -1014,11 +1008,18 @@ class TMDB_Admin_Page_Search {
             $existing_path = (string) get_post_meta( $post_id, 'TMDB_poster_path', true );
         }
 
-        if ( $existing_path === $poster_path && has_post_thumbnail( $post_id ) ) {
+        $poster_size = self::get_configured_poster_size();
+        $existing_size = (string) get_post_meta( $post_id, 'TMDB_poster_size', true );
+
+        if ( $existing_path === $poster_path && $existing_size === $poster_size && has_post_thumbnail( $post_id ) ) {
             return;
         }
 
-        $poster_url = trailingslashit( self::ORIGINAL_IMAGE_BASE_URL ) . ltrim( $poster_path, '/' );
+        $poster_url = self::build_poster_url( $poster_path );
+
+        if ( '' === $poster_url ) {
+            return;
+        }
 
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
@@ -1031,6 +1032,37 @@ class TMDB_Admin_Page_Search {
         }
 
         set_post_thumbnail( $post_id, (int) $attachment_id );
+        update_post_meta( $post_id, 'TMDB_poster_size', $poster_size );
+    }
+
+    /**
+     * Builds a language query list for TMDB requests including optional fallbacks.
+     */
+    private static function build_language_list( string $primary, ?string $secondary = null, bool $include_null = false ): string {
+        $languages = [];
+
+        foreach ( [ $primary, $secondary, 'en-US', 'en' ] as $language ) {
+            if ( null === $language ) {
+                continue;
+            }
+
+            $language = sanitize_text_field( (string) $language );
+            $language = trim( $language );
+
+            if ( '' === $language ) {
+                continue;
+            }
+
+            $languages[] = $language;
+        }
+
+        if ( $include_null ) {
+            $languages[] = 'null';
+        }
+
+        $languages = array_values( array_unique( $languages ) );
+
+        return implode( ',', $languages );
     }
 
     /**
