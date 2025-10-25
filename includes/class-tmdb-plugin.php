@@ -49,5 +49,50 @@ class TMDB_Plugin {
         add_action( 'save_post', [ TMDB_Meta_Boxes::class, 'save' ], 10, 2 );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Config::class, 'register' ] );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Search::class, 'register' ] );
+        add_filter( 'single_template', [ $this, 'filter_single_template' ] );
+        add_filter( 'archive_template', [ $this, 'filter_archive_template' ] );
+    }
+
+    /**
+     * Loads the plugin single template for TMDB movies when available.
+     */
+    public function filter_single_template( string $template ): string {
+        if ( is_singular( 'movie' ) ) {
+            $movie_template = $this->locate_plugin_template( 'single', 'movie' );
+
+            if ( null !== $movie_template ) {
+                return $movie_template;
+            }
+        }
+
+        return $template;
+    }
+
+    /**
+     * Loads the plugin archive template for TMDB movies when available.
+     */
+    public function filter_archive_template( string $template ): string {
+        if ( is_post_type_archive( 'movie' ) ) {
+            $archive_template = $this->locate_plugin_template( 'archive', 'movie' );
+
+            if ( null !== $archive_template ) {
+                return $archive_template;
+            }
+        }
+
+        return $template;
+    }
+
+    /**
+     * Returns the absolute path to a plugin template if it exists.
+     */
+    private function locate_plugin_template( string $type, string $name ): ?string {
+        $template_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/' . $type . '-' . $name . '.php';
+
+        if ( file_exists( $template_path ) ) {
+            return $template_path;
+        }
+
+        return null;
     }
 }
