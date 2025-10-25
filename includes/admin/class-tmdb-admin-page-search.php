@@ -343,7 +343,11 @@ class TMDB_Admin_Page_Search {
             ];
         }
 
-        $import = self::import_movie( $movie_response['movie'], $movie_response['language'] );
+        $import = self::import_movie(
+            $movie_response['movie'],
+            $movie_response['language'],
+            $movie_response['fallback_movie'] ?? null
+        );
 
         if ( is_wp_error( $import ) ) {
             return [
@@ -559,9 +563,10 @@ class TMDB_Admin_Page_Search {
             return $response;
         }
 
-        $movie = $response['data'];
+        $movie          = $response['data'];
+        $fallback_movie = null;
 
-        if ( null !== $fallback_language && $fallback_language !== $language && self::movie_requires_fallback_enrichment( $movie ) ) {
+        if ( null !== $fallback_language && $fallback_language !== $language ) {
             $fallback_response = self::request_tmdb(
                 sprintf( 'https://api.themoviedb.org/3/movie/%d', $movie_id ),
                 [
@@ -574,26 +579,32 @@ class TMDB_Admin_Page_Search {
             );
 
             if ( $fallback_response['success'] ) {
-                $movie = self::merge_movie_with_fallback( $movie, $fallback_response['data'] );
+                $fallback_movie = $fallback_response['data'];
+
+                if ( self::movie_requires_fallback_enrichment( $movie ) ) {
+                    $movie = self::merge_movie_with_fallback( $movie, $fallback_movie );
+                }
             }
         }
 
         return [
-            'success'  => true,
-            'movie'    => $movie,
-            'language' => $language,
+            'success'        => true,
+            'movie'          => $movie,
+            'language'       => $language,
+            'fallback_movie' => $fallback_movie,
         ];
     }
 
     /**
      * Imports a movie and its related entities into WordPress.
      *
-     * @param array<string, mixed> $movie_data Movie payload retrieved from TMDB.
-     * @param string               $language   Language used for the payload.
+     * @param array<string, mixed>      $movie_data     Movie payload retrieved from TMDB.
+     * @param string                     $language       Language used for the payload.
+     * @param array<string, mixed>|null $fallback_movie Optional fallback payload containing alternate language data.
      *
      * @return array<string, int>|\WP_Error
      */
-    private static function import_movie( array $movie_data, string $language ) {
+    private static function import_movie( array $movie_data, string $language, ?array $fallback_movie = null ) {
         $movie_id = isset( $movie_data['id'] ) ? (int) $movie_data['id'] : 0;
 
         if ( $movie_id <= 0 ) {
@@ -660,13 +671,25 @@ class TMDB_Admin_Page_Search {
 
         update_post_meta( $post_id, 'TMDB_poster_path', $poster_path );
 
+        $fallback_cast = [];
+        $fallback_crew = [];
+
+        if ( null !== $fallback_movie && isset( $fallback_movie['credits'] ) && is_array( $fallback_movie['credits'] ) ) {
+            $fallback_cast = isset( $fallback_movie['credits']['cast'] ) && is_array( $fallback_movie['credits']['cast'] ) ? $fallback_movie['credits']['cast'] : [];
+            $fallback_crew = isset( $fallback_movie['credits']['crew'] ) && is_array( $fallback_movie['credits']['crew'] ) ? $fallback_movie['credits']['crew'] : [];
+        }
+
         $cast_info   = self::import_cast(
             isset( $movie_data['credits']['cast'] ) && is_array( $movie_data['credits']['cast'] ) ? $movie_data['credits']['cast'] : [],
             (int) $post_id,
             $movie_id,
-            $title
+            $title,
+            $fallback_cast
         );
-        $crew_info   = self::import_crew( isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [] );
+        $crew_info   = self::import_crew(
+            isset( $movie_data['credits']['crew'] ) && is_array( $movie_data['credits']['crew'] ) ? $movie_data['credits']['crew'] : [],
+            $fallback_crew
+        );
         $genre_info  = self::import_genres( isset( $movie_data['genres'] ) && is_array( $movie_data['genres'] ) ? $movie_data['genres'] : [] );
         $keyword_raw = [];
 
@@ -717,13 +740,15 @@ class TMDB_Admin_Page_Search {
     /**
      * Imports cast members as actor taxonomy terms.
      *
-     * @param array<int, array<string, mixed>> $cast Cast members.
+     * @param array<int, array<string, mixed>> $cast          Cast members.
+     * @param array<int, array<string, mixed>> $fallback_cast Cast members from the fallback payload.
      *
      * @return array<string, array<int, mixed>>
      */
-    private static function import_cast( array $cast, int $movie_post_id, int $movie_tmdb_id, string $movie_title ): array {
-        $stored_cast = [];
-        $term_ids    = [];
+    private static function import_cast( array $cast, int $movie_post_id, int $movie_tmdb_id, string $movie_title, array $fallback_cast = [] ): array {
+        $stored_cast     = [];
+        $term_ids        = [];
+        $fallback_lookup = self::build_person_lookup( $fallback_cast );
 
         usort(
             $cast,
@@ -733,24 +758,34 @@ class TMDB_Admin_Page_Search {
         );
 
         foreach ( $cast as $member ) {
-            if ( ! is_array( $member ) || empty( $member['name'] ) ) {
+            if ( ! is_array( $member ) ) {
                 continue;
             }
 
-            $actor_name = sanitize_text_field( $member['name'] );
-            $actor_id   = isset( $member['id'] ) ? (int) $member['id'] : 0;
-            $term_id    = self::upsert_related_term( TMDB_Taxonomies::ACTOR, $actor_id, $actor_name );
+            $actor_id = isset( $member['id'] ) ? (int) $member['id'] : 0;
+
+            $names          = self::resolve_person_names( $member, $fallback_lookup[ $actor_id ] ?? null );
+            $actor_name     = $names['display'];
+            $original_name  = $names['original'];
+            $character      = isset( $member['character'] ) ? sanitize_text_field( $member['character'] ) : '';
+            $actor_name     = sanitize_text_field( $actor_name );
+            $original_name  = sanitize_text_field( $original_name );
+
+            if ( '' === $actor_name ) {
+                continue;
+            }
+            $term_id        = self::upsert_related_term( TMDB_Taxonomies::ACTOR, $actor_id, $actor_name );
 
             if ( $term_id ) {
                 $term_ids[] = $term_id;
+                self::update_person_term_meta( $term_id, $original_name );
             }
 
-            $character = isset( $member['character'] ) ? sanitize_text_field( $member['character'] ) : '';
-
             $stored_cast[] = [
-                'name'      => $actor_name,
-                'character' => $character,
-                'order'     => isset( $member['order'] ) ? (int) $member['order'] : 0,
+                'name'          => $actor_name,
+                'original_name' => $original_name,
+                'character'     => $character,
+                'order'         => isset( $member['order'] ) ? (int) $member['order'] : 0,
             ];
 
             if ( $term_id ) {
@@ -823,13 +858,15 @@ class TMDB_Admin_Page_Search {
     /**
      * Imports crew members focusing on directors.
      *
-     * @param array<int, array<string, mixed>> $crew Crew members.
+     * @param array<int, array<string, mixed>> $crew          Crew members.
+     * @param array<int, array<string, mixed>> $fallback_crew Crew members from the fallback payload.
      *
      * @return array<string, array<int, mixed>>
      */
-    private static function import_crew( array $crew ): array {
-        $directors = [];
-        $term_ids  = [];
+    private static function import_crew( array $crew, array $fallback_crew = [] ): array {
+        $directors        = [];
+        $term_ids         = [];
+        $fallback_lookup  = self::build_person_lookup( $fallback_crew );
 
         foreach ( $crew as $member ) {
             if ( ! is_array( $member ) ) {
@@ -842,21 +879,28 @@ class TMDB_Admin_Page_Search {
                 continue;
             }
 
-            if ( empty( $member['name'] ) ) {
+            $director_id = isset( $member['id'] ) ? (int) $member['id'] : 0;
+
+            $names       = self::resolve_person_names( $member, $fallback_lookup[ $director_id ] ?? null );
+            $name        = $names['display'];
+            $original    = $names['original'];
+            $name        = sanitize_text_field( $name );
+            $original    = sanitize_text_field( $original );
+
+            if ( '' === $name ) {
                 continue;
             }
-
-            $name        = sanitize_text_field( $member['name'] );
-            $director_id = isset( $member['id'] ) ? (int) $member['id'] : 0;
             $term_id     = self::upsert_related_term( TMDB_Taxonomies::DIRECTOR, $director_id, $name );
 
             if ( $term_id ) {
                 $term_ids[] = $term_id;
+                self::update_person_term_meta( $term_id, $original );
             }
 
             $directors[] = [
-                'name' => $name,
-                'job'  => $job,
+                'name'          => $name,
+                'original_name' => $original,
+                'job'           => $job,
             ];
         }
 
@@ -864,6 +908,110 @@ class TMDB_Admin_Page_Search {
             'term_ids'  => array_map( 'intval', array_unique( $term_ids ) ),
             'directors' => $directors,
         ];
+    }
+
+    /**
+     * Builds a person lookup map keyed by TMDB identifier.
+     *
+     * @param array<int, array<string, mixed>> $people People payload.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function build_person_lookup( array $people ): array {
+        $lookup = [];
+
+        foreach ( $people as $person ) {
+            if ( ! is_array( $person ) || ! isset( $person['id'] ) ) {
+                continue;
+            }
+
+            $person_id = (int) $person['id'];
+
+            if ( $person_id <= 0 ) {
+                continue;
+            }
+
+            $lookup[ $person_id ] = $person;
+        }
+
+        return $lookup;
+    }
+
+    /**
+     * Determines the display and original names for a TMDB person entry.
+     *
+     * @param array<string, mixed>      $primary  Primary payload data.
+     * @param array<string, mixed>|null $fallback Fallback language payload data.
+     *
+     * @return array{display:string,original:string}
+     */
+    private static function resolve_person_names( array $primary, ?array $fallback ): array {
+        $primary_name  = isset( $primary['name'] ) ? (string) $primary['name'] : '';
+        $fallback_name = ( null !== $fallback && isset( $fallback['name'] ) ) ? (string) $fallback['name'] : '';
+        $original_name = isset( $primary['original_name'] ) ? (string) $primary['original_name'] : '';
+
+        if ( '' === $original_name && null !== $fallback && isset( $fallback['original_name'] ) ) {
+            $original_name = (string) $fallback['original_name'];
+        }
+
+        $display_name = '' !== $fallback_name ? $fallback_name : $primary_name;
+
+        if ( '' === $display_name && '' !== $original_name ) {
+            $display_name = $original_name;
+        }
+
+        return [
+            'display'  => $display_name,
+            'original' => $original_name,
+        ];
+    }
+
+    /**
+     * Stores the original name meta for a person term.
+     */
+    private static function update_person_term_meta( int $term_id, string $original_name ): void {
+        if ( $term_id <= 0 ) {
+            return;
+        }
+
+        if ( '' === $original_name ) {
+            delete_term_meta( $term_id, 'TMDB_original_name' );
+
+            return;
+        }
+
+        update_term_meta( $term_id, 'TMDB_original_name', $original_name );
+    }
+
+    /**
+     * Updates the term name and slug when the stored values differ from TMDB data.
+     */
+    private static function maybe_update_term_name( int $term_id, string $taxonomy, string $name, string $slug ): void {
+        if ( $term_id <= 0 ) {
+            return;
+        }
+
+        $term = get_term( $term_id, $taxonomy );
+
+        if ( ! $term instanceof \WP_Term || is_wp_error( $term ) ) {
+            return;
+        }
+
+        $update_args = [];
+
+        if ( '' !== $name && $term->name !== $name ) {
+            $update_args['name'] = $name;
+        }
+
+        if ( '' !== $slug && $term->slug !== $slug ) {
+            $update_args['slug'] = $slug;
+        }
+
+        if ( empty( $update_args ) ) {
+            return;
+        }
+
+        wp_update_term( $term_id, $taxonomy, $update_args );
     }
 
     /**
@@ -1079,7 +1227,11 @@ class TMDB_Admin_Page_Search {
             );
 
             if ( ! is_wp_error( $existing_by_meta ) && ! empty( $existing_by_meta ) ) {
-                return (int) $existing_by_meta[0];
+                $term_id = (int) $existing_by_meta[0];
+
+                self::maybe_update_term_name( $term_id, $taxonomy, $name, $slug );
+
+                return $term_id;
             }
         }
 
@@ -1091,6 +1243,8 @@ class TMDB_Admin_Page_Search {
             if ( $tmdb_id > 0 ) {
                 update_term_meta( $term_id, 'TMDB_id', $tmdb_id );
             }
+
+            self::maybe_update_term_name( $term_id, $taxonomy, $name, $slug );
 
             return $term_id;
         }
