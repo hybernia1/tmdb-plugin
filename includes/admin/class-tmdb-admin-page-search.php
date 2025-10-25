@@ -611,8 +611,21 @@ class TMDB_Admin_Page_Search {
             return new \WP_Error( 'tmdb_import_invalid_movie', __( 'TMDB movie data is missing an identifier.', 'tmdb-plugin' ) );
         }
 
-        $title   = isset( $movie_data['title'] ) ? sanitize_text_field( $movie_data['title'] ) : '';
-        $content = isset( $movie_data['overview'] ) ? wp_kses_post( $movie_data['overview'] ) : '';
+        $title          = isset( $movie_data['title'] ) ? sanitize_text_field( $movie_data['title'] ) : '';
+        $original_title = isset( $movie_data['original_title'] ) ? sanitize_text_field( $movie_data['original_title'] ) : '';
+        $content        = isset( $movie_data['overview'] ) ? wp_kses_post( $movie_data['overview'] ) : '';
+
+        $fallback_title = '';
+
+        if ( null !== $fallback_movie ) {
+            $fallback_title = isset( $fallback_movie['title'] ) ? sanitize_text_field( $fallback_movie['title'] ) : '';
+
+            if ( '' === $fallback_title && isset( $fallback_movie['original_title'] ) ) {
+                $fallback_title = sanitize_text_field( $fallback_movie['original_title'] );
+            }
+        }
+
+        $slug = self::generate_movie_slug( $movie_id, $title, '' !== $original_title ? $original_title : $fallback_title );
 
         $existing = get_posts(
             [
@@ -636,6 +649,10 @@ class TMDB_Admin_Page_Search {
             'post_status'  => 'publish',
         ];
 
+        if ( '' !== $slug ) {
+            $post_data['post_name'] = wp_slash( $slug );
+        }
+
         if ( ! empty( $existing ) ) {
             $post_data['ID'] = (int) $existing[0];
             $post_id         = wp_update_post( $post_data, true );
@@ -651,7 +668,7 @@ class TMDB_Admin_Page_Search {
 
         update_post_meta( $post_id, 'TMDB_id', $movie_id );
         update_post_meta( $post_id, 'TMDB_language', $language );
-        update_post_meta( $post_id, 'TMDB_original_title', isset( $movie_data['original_title'] ) ? sanitize_text_field( $movie_data['original_title'] ) : '' );
+        update_post_meta( $post_id, 'TMDB_original_title', $original_title );
         update_post_meta( $post_id, 'TMDB_tagline', isset( $movie_data['tagline'] ) ? sanitize_text_field( $movie_data['tagline'] ) : '' );
         update_post_meta( $post_id, 'TMDB_release_date', isset( $movie_data['release_date'] ) ? sanitize_text_field( $movie_data['release_date'] ) : '' );
         update_post_meta( $post_id, 'TMDB_runtime', isset( $movie_data['runtime'] ) ? (int) $movie_data['runtime'] : 0 );
@@ -659,6 +676,16 @@ class TMDB_Admin_Page_Search {
         update_post_meta( $post_id, 'TMDB_vote_count', isset( $movie_data['vote_count'] ) ? (int) $movie_data['vote_count'] : 0 );
         update_post_meta( $post_id, 'TMDB_homepage', isset( $movie_data['homepage'] ) ? esc_url_raw( $movie_data['homepage'] ) : '' );
         update_post_meta( $post_id, 'TMDB_status', isset( $movie_data['status'] ) ? sanitize_text_field( $movie_data['status'] ) : '' );
+
+        $collection_data = self::prepare_collection_data( isset( $movie_data['belongs_to_collection'] ) ? $movie_data['belongs_to_collection'] : null );
+
+        if ( empty( $collection_data ) ) {
+            delete_post_meta( $post_id, 'TMDB_collection_id' );
+            delete_post_meta( $post_id, 'TMDB_collection' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_collection_id', $collection_data['id'] );
+            update_post_meta( $post_id, 'TMDB_collection', $collection_data );
+        }
 
         $poster_path          = isset( $movie_data['poster_path'] ) ? sanitize_text_field( ltrim( (string) $movie_data['poster_path'], '/' ) ) : '';
         $previous_poster_path = (string) get_post_meta( $post_id, 'TMDB_poster_path', true );
@@ -1283,6 +1310,54 @@ class TMDB_Admin_Page_Search {
         }
 
         return sanitize_title( $name );
+    }
+
+    /**
+     * Generates a slug for a movie post that includes the TMDB identifier when available.
+     */
+    private static function generate_movie_slug( int $tmdb_id, string $title, string $fallback_title = '' ): string {
+        $base_title = '' !== $title ? $title : $fallback_title;
+
+        if ( '' === $base_title && $tmdb_id <= 0 ) {
+            return '';
+        }
+
+        if ( '' === $base_title ) {
+            return sanitize_title( (string) $tmdb_id );
+        }
+
+        $slug_source = $tmdb_id > 0 ? sprintf( '%d-%s', $tmdb_id, $base_title ) : $base_title;
+
+        return sanitize_title( $slug_source );
+    }
+
+    /**
+     * Normalises collection data returned by TMDB for storage in post meta.
+     *
+     * @param array<string, mixed>|null $collection Raw collection payload from TMDB.
+     *
+     * @return array<string, mixed>
+     */
+    private static function prepare_collection_data( ?array $collection ): array {
+        if ( empty( $collection ) ) {
+            return [];
+        }
+
+        $id            = isset( $collection['id'] ) ? (int) $collection['id'] : 0;
+        $name          = isset( $collection['name'] ) ? sanitize_text_field( $collection['name'] ) : '';
+        $poster_path   = isset( $collection['poster_path'] ) ? sanitize_text_field( ltrim( (string) $collection['poster_path'], '/' ) ) : '';
+        $backdrop_path = isset( $collection['backdrop_path'] ) ? sanitize_text_field( ltrim( (string) $collection['backdrop_path'], '/' ) ) : '';
+
+        if ( 0 === $id && '' === $name && '' === $poster_path && '' === $backdrop_path ) {
+            return [];
+        }
+
+        return [
+            'id'            => $id,
+            'name'          => $name,
+            'poster_path'   => $poster_path,
+            'backdrop_path' => $backdrop_path,
+        ];
     }
 
     /**
