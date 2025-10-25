@@ -17,9 +17,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Provides an admin interface for searching and importing TMDB movies.
  */
 class TMDB_Admin_Page_Search {
-    private const MENU_SLUG              = 'tmdb-plugin-search';
-    private const POSTER_BASE_URL        = 'https://image.tmdb.org/t/p/';
+    private const MENU_SLUG               = 'tmdb-plugin-search';
+    private const POSTER_BASE_URL         = 'https://image.tmdb.org/t/p/';
     private const ORIGINAL_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
+    private const REQUIRED_TRANSLATION_FIELDS = [ 'title', 'overview' ];
+    private const FALLBACK_STRING_FIELDS      = [ 'title', 'overview', 'tagline' ];
 
     /**
      * Registers the search submenu page.
@@ -557,9 +559,28 @@ class TMDB_Admin_Page_Search {
             return $response;
         }
 
+        $movie = $response['data'];
+
+        if ( null !== $fallback_language && $fallback_language !== $language && self::movie_requires_fallback_enrichment( $movie ) ) {
+            $fallback_response = self::request_tmdb(
+                sprintf( 'https://api.themoviedb.org/3/movie/%d', $movie_id ),
+                [
+                    'api_key'            => $api_key,
+                    'language'           => $fallback_language,
+                    'append_to_response' => 'credits,videos,keywords',
+                    'include_image_language' => self::build_language_list( $fallback_language, $language, true ),
+                    'include_video_language' => self::build_language_list( $fallback_language, $language, true ),
+                ]
+            );
+
+            if ( $fallback_response['success'] ) {
+                $movie = self::merge_movie_with_fallback( $movie, $fallback_response['data'] );
+            }
+        }
+
         return [
             'success'  => true,
-            'movie'    => $response['data'],
+            'movie'    => $movie,
             'language' => $language,
         ];
     }
@@ -1063,6 +1084,210 @@ class TMDB_Admin_Page_Search {
         $languages = array_values( array_unique( $languages ) );
 
         return implode( ',', $languages );
+    }
+
+    /**
+     * Determines whether a fallback fetch is required to complete the movie payload.
+     *
+     * @param array<string, mixed> $movie_data Movie payload from TMDB.
+     */
+    private static function movie_requires_fallback_enrichment( array $movie_data ): bool {
+        foreach ( self::REQUIRED_TRANSLATION_FIELDS as $field ) {
+            if ( self::is_missing_string_field( $movie_data, $field ) ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Merges translated data from a fallback response into the primary payload.
+     *
+     * @param array<string, mixed> $primary_payload  Primary language payload.
+     * @param array<string, mixed> $fallback_payload Fallback language payload.
+     *
+     * @return array<string, mixed>
+     */
+    private static function merge_movie_with_fallback( array $primary_payload, array $fallback_payload ): array {
+        foreach ( self::FALLBACK_STRING_FIELDS as $field ) {
+            if ( self::is_missing_string_field( $primary_payload, $field ) && ! self::is_missing_string_field( $fallback_payload, $field ) ) {
+                $primary_payload[ $field ] = $fallback_payload[ $field ];
+            }
+        }
+
+        if ( self::is_genre_list_missing( $primary_payload ) && ! self::is_genre_list_missing( $fallback_payload ) ) {
+            $primary_payload['genres'] = $fallback_payload['genres'];
+        }
+
+        if ( self::is_keywords_missing( $primary_payload ) && ! self::is_keywords_missing( $fallback_payload ) ) {
+            $primary_payload['keywords'] = $fallback_payload['keywords'];
+        }
+
+        if ( self::is_videos_missing( $primary_payload ) && ! self::is_videos_missing( $fallback_payload ) ) {
+            $primary_payload['videos'] = $fallback_payload['videos'];
+        }
+
+        if ( self::is_cast_missing( $primary_payload ) && ! self::is_cast_missing( $fallback_payload ) ) {
+            if ( ! isset( $primary_payload['credits'] ) || ! is_array( $primary_payload['credits'] ) ) {
+                $primary_payload['credits'] = [];
+            }
+
+            $primary_payload['credits']['cast'] = $fallback_payload['credits']['cast'];
+        }
+
+        if ( self::is_crew_missing( $primary_payload ) && ! self::is_crew_missing( $fallback_payload ) ) {
+            if ( ! isset( $primary_payload['credits'] ) || ! is_array( $primary_payload['credits'] ) ) {
+                $primary_payload['credits'] = [];
+            }
+
+            $primary_payload['credits']['crew'] = $fallback_payload['credits']['crew'];
+        }
+
+        return $primary_payload;
+    }
+
+    /**
+     * Checks if the provided payload is missing a translated string field.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_missing_string_field( array $payload, string $field ): bool {
+        if ( ! array_key_exists( $field, $payload ) ) {
+            return true;
+        }
+
+        $value = $payload[ $field ];
+
+        if ( null === $value ) {
+            return true;
+        }
+
+        if ( is_string( $value ) ) {
+            return '' === trim( $value );
+        }
+
+        return false;
+    }
+
+    /**
+     * Determines if the genre list is missing or empty.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_genre_list_missing( array $payload ): bool {
+        if ( ! isset( $payload['genres'] ) || ! is_array( $payload['genres'] ) ) {
+            return true;
+        }
+
+        foreach ( $payload['genres'] as $genre ) {
+            if ( is_array( $genre ) && ! empty( $genre['name'] ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Determines whether keywords are missing from the payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_keywords_missing( array $payload ): bool {
+        return empty( self::extract_keywords( $payload ) );
+    }
+
+    /**
+     * Retrieves the keyword list from a payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     *
+     * @return array<int, mixed>
+     */
+    private static function extract_keywords( array $payload ): array {
+        if ( ! isset( $payload['keywords'] ) || ! is_array( $payload['keywords'] ) ) {
+            return [];
+        }
+
+        if ( isset( $payload['keywords']['keywords'] ) && is_array( $payload['keywords']['keywords'] ) ) {
+            return array_values( array_filter( $payload['keywords']['keywords'], 'is_array' ) );
+        }
+
+        if ( isset( $payload['keywords']['results'] ) && is_array( $payload['keywords']['results'] ) ) {
+            return array_values( array_filter( $payload['keywords']['results'], 'is_array' ) );
+        }
+
+        return [];
+    }
+
+    /**
+     * Determines whether video results are missing from the payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_videos_missing( array $payload ): bool {
+        if ( ! isset( $payload['videos'] ) || ! is_array( $payload['videos'] ) ) {
+            return true;
+        }
+
+        if ( ! isset( $payload['videos']['results'] ) || ! is_array( $payload['videos']['results'] ) ) {
+            return true;
+        }
+
+        foreach ( $payload['videos']['results'] as $video ) {
+            if ( is_array( $video ) && ! empty( $video['key'] ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Determines whether cast credits are missing from the payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_cast_missing( array $payload ): bool {
+        if ( ! isset( $payload['credits'] ) || ! is_array( $payload['credits'] ) ) {
+            return true;
+        }
+
+        if ( ! isset( $payload['credits']['cast'] ) || ! is_array( $payload['credits']['cast'] ) ) {
+            return true;
+        }
+
+        foreach ( $payload['credits']['cast'] as $cast_member ) {
+            if ( is_array( $cast_member ) && ! empty( $cast_member['name'] ) ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Determines whether crew credits are missing from the payload.
+     *
+     * @param array<string, mixed> $payload Movie payload.
+     */
+    private static function is_crew_missing( array $payload ): bool {
+        if ( ! isset( $payload['credits'] ) || ! is_array( $payload['credits'] ) ) {
+            return true;
+        }
+
+        if ( ! isset( $payload['credits']['crew'] ) || ! is_array( $payload['credits']['crew'] ) ) {
+            return true;
+        }
+
+        foreach ( $payload['credits']['crew'] as $crew_member ) {
+            if ( is_array( $crew_member ) && ! empty( $crew_member['name'] ) ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
