@@ -1983,8 +1983,14 @@ class TMDB_Admin_Page_Search {
      * @return array<int, array<string, string>>
      */
     private static function sanitize_alternative_titles( $payload ): array {
-        if ( is_array( $payload ) && isset( $payload['titles'] ) && is_array( $payload['titles'] ) ) {
-            $payload = $payload['titles'];
+        if ( is_array( $payload ) ) {
+            if ( isset( $payload['titles'] ) && is_array( $payload['titles'] ) ) {
+                $payload = $payload['titles'];
+            } elseif ( isset( $payload['results'] ) && is_array( $payload['results'] ) ) {
+                $payload = $payload['results'];
+            } elseif ( isset( $payload['aliases'] ) && is_array( $payload['aliases'] ) ) {
+                $payload = $payload['aliases'];
+            }
         }
 
         if ( ! is_array( $payload ) ) {
@@ -1999,7 +2005,14 @@ class TMDB_Admin_Page_Search {
                 continue;
             }
 
-            $label = isset( $title['title'] ) ? sanitize_text_field( (string) $title['title'] ) : '';
+            $label = '';
+
+            if ( isset( $title['title'] ) ) {
+                $label = sanitize_text_field( (string) $title['title'] );
+            } elseif ( isset( $title['name'] ) ) {
+                // Some TMDB responses (notably TV payloads) use the `name` key instead of `title`.
+                $label = sanitize_text_field( (string) $title['name'] );
+            }
 
             if ( '' === $label ) {
                 continue;
