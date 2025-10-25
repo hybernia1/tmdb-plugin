@@ -49,6 +49,7 @@ class TMDB_Plugin {
         add_action( 'save_post', [ TMDB_Meta_Boxes::class, 'save' ], 10, 2 );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Config::class, 'register' ] );
         add_action( 'admin_menu', [ TMDB_Admin_Page_Search::class, 'register' ] );
+        add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend_assets' ] );
         add_filter( 'single_template', [ $this, 'filter_single_template' ] );
         add_filter( 'archive_template', [ $this, 'filter_archive_template' ] );
     }
@@ -94,5 +95,27 @@ class TMDB_Plugin {
         }
 
         return null;
+    }
+
+    /**
+     * Enqueues frontend assets for TMDB templates.
+     */
+    public function enqueue_frontend_assets(): void {
+        if ( ! ( is_singular( 'movie' ) || is_post_type_archive( 'movie' ) ) ) {
+            return;
+        }
+
+        $stylesheet_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css';
+
+        if ( ! file_exists( $stylesheet_path ) ) {
+            return;
+        }
+
+        wp_enqueue_style(
+            'tmdb-plugin-single-movie',
+            plugin_dir_url( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css',
+            [],
+            (string) filemtime( $stylesheet_path )
+        );
     }
 }
