@@ -673,8 +673,10 @@ class TMDB_Admin_Page_Search {
             }
         }
 
-        $keyword_info = self::import_keywords( $keyword_raw );
-        $trailer_info = self::extract_trailer( isset( $movie_data['videos']['results'] ) && is_array( $movie_data['videos']['results'] ) ? $movie_data['videos']['results'] : [] );
+        $keyword_info     = self::import_keywords( $keyword_raw );
+        $videos_raw       = isset( $movie_data['videos']['results'] ) && is_array( $movie_data['videos']['results'] ) ? $movie_data['videos']['results'] : [];
+        $trailer_info     = self::extract_trailer( $videos_raw );
+        $videos_dump_json = self::serialize_videos_payload( $videos_raw );
 
         wp_set_object_terms( $post_id, $cast_info['term_ids'], TMDB_Taxonomies::ACTOR, false );
         wp_set_object_terms( $post_id, $crew_info['term_ids'], TMDB_Taxonomies::DIRECTOR, false );
@@ -694,6 +696,12 @@ class TMDB_Admin_Page_Search {
             delete_post_meta( $post_id, 'TMDB_trailer' );
         } else {
             update_post_meta( $post_id, 'TMDB_trailer', $trailer_info );
+        }
+
+        if ( '' === $videos_dump_json ) {
+            delete_post_meta( $post_id, 'TMDB_videos_payload' );
+        } else {
+            update_post_meta( $post_id, 'TMDB_videos_payload', $videos_dump_json );
         }
 
         return [
@@ -896,6 +904,46 @@ class TMDB_Admin_Page_Search {
         $preferred['url'] = '' !== $url ? esc_url_raw( $url ) : '';
 
         return $preferred;
+    }
+
+    /**
+     * Serializes the entire TMDB videos payload for storage/debugging purposes.
+     *
+     * @param array<int, array<string, mixed>> $videos Videos payload.
+     */
+    private static function serialize_videos_payload( array $videos ): string {
+        if ( empty( $videos ) ) {
+            return '';
+        }
+
+        $sanitized = [];
+
+        foreach ( $videos as $video ) {
+            if ( ! is_array( $video ) ) {
+                continue;
+            }
+
+            $sanitized[] = [
+                'id'           => isset( $video['id'] ) ? sanitize_text_field( (string) $video['id'] ) : '',
+                'iso_639_1'    => isset( $video['iso_639_1'] ) ? sanitize_text_field( (string) $video['iso_639_1'] ) : '',
+                'iso_3166_1'   => isset( $video['iso_3166_1'] ) ? sanitize_text_field( (string) $video['iso_3166_1'] ) : '',
+                'name'         => isset( $video['name'] ) ? sanitize_text_field( (string) $video['name'] ) : '',
+                'key'          => isset( $video['key'] ) ? sanitize_text_field( (string) $video['key'] ) : '',
+                'site'         => isset( $video['site'] ) ? sanitize_text_field( (string) $video['site'] ) : '',
+                'size'         => isset( $video['size'] ) ? (int) $video['size'] : 0,
+                'type'         => isset( $video['type'] ) ? sanitize_text_field( (string) $video['type'] ) : '',
+                'official'     => ! empty( $video['official'] ),
+                'published_at' => isset( $video['published_at'] ) ? sanitize_text_field( (string) $video['published_at'] ) : '',
+            ];
+        }
+
+        if ( empty( $sanitized ) ) {
+            return '';
+        }
+
+        $json = wp_json_encode( $sanitized );
+
+        return is_string( $json ) ? $json : '';
     }
 
     /**
