@@ -21,10 +21,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 const TMDB_PLUGIN_VERSION = '0.1.0';
 const TMDB_PLUGIN_SLUG    = 'tmdb-plugin';
-const TMDB_PLUGIN_FILE    = __FILE__;
 
 require_once __DIR__ . '/includes/admin/class-tmdb-admin-page-config.php';
-require_once __DIR__ . '/includes/admin/class-tmdb-admin-page-api-test.php';
 require_once __DIR__ . '/includes/post-types/class-tmdb-post-types.php';
 require_once __DIR__ . '/includes/meta/class-tmdb-meta-boxes.php';
 require_once __DIR__ . '/includes/class-tmdb-plugin.php';
