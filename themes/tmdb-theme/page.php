@@ -17,9 +17,9 @@ get_header();
     while ( have_posts() ) :
         the_post();
         ?>
-        <article id="post-<?php the_ID(); ?>" <?php post_class( 'card shadow-sm bg-transparent border-0' ); ?>>
+        <article id="post-<?php the_ID(); ?>" <?php post_class( 'card shadow-sm border-0' ); ?>>
             <header class="card-body pb-0">
-                <h1 class="card-title display-5 fw-bold text-light"><?php the_title(); ?></h1>
+                <h1 class="card-title display-5 fw-bold mb-3"><?php the_title(); ?></h1>
             </header>
             <div class="card-body">
                 <?php the_content(); ?>

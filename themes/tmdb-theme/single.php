@@ -17,7 +17,7 @@ get_header();
     while ( have_posts() ) :
         the_post();
         ?>
-        <article id="post-<?php the_ID(); ?>" <?php post_class( 'card shadow-sm bg-transparent border-0' ); ?>>
+        <article id="post-<?php the_ID(); ?>" <?php post_class( 'card shadow-sm border-0' ); ?>>
             <?php if ( has_post_thumbnail() ) : ?>
                 <div class="ratio ratio-16x9 rounded overflow-hidden mb-4">
                     <?php the_post_thumbnail( 'large', [ 'class' => 'w-100 h-100 object-fit-cover' ] ); ?>
@@ -25,7 +25,7 @@ get_header();
             <?php endif; ?>
 
             <header class="card-body pb-0">
-                <h1 class="card-title display-5 fw-bold text-light"><?php the_title(); ?></h1>
+                <h1 class="card-title display-5 fw-bold mb-2"><?php the_title(); ?></h1>
                 <div class="card-subtitle text-muted small">
                     <?php echo esc_html( get_the_date() ); ?>
                     &middot;
@@ -42,7 +42,7 @@ get_header();
             </div>
 
             <footer class="card-body pt-0">
-                <?php the_tags( '<div class="mt-3"><span class="badge bg-info text-dark me-2">', '</span><span class="badge bg-info text-dark me-2">', '</span></div>' ); ?>
+                <?php the_tags( '<div class="mt-3"><span class="badge bg-primary-subtle text-primary me-2">', '</span><span class="badge bg-primary-subtle text-primary me-2">', '</span></div>' ); ?>
             </footer>
         </article>
 

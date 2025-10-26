@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 ?>
     </main><!-- #content -->
 
-    <footer id="colophon" class="site-footer mt-auto py-4">
+    <footer id="colophon" class="site-footer mt-auto py-4 border-top bg-white">
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">

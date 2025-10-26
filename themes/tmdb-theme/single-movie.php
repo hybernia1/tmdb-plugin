@@ -1,6 +1,6 @@
 <?php
 /**
- * Single movie template optimized for Bootstrap layout.
+ * Single movie template optimized for a tabbed Bootstrap layout.
  *
  * @package TMDB_Theme
  */
@@ -19,23 +19,29 @@ get_header();
     while ( have_posts() ) :
         the_post();
 
-        $post_id          = get_the_ID();
-        $tagline          = (string) get_post_meta( $post_id, 'TMDB_tagline', true );
-        $original_title   = (string) get_post_meta( $post_id, 'TMDB_original_title', true );
-        $release_date_raw = (string) get_post_meta( $post_id, 'TMDB_release_date', true );
-        $runtime_minutes  = (int) get_post_meta( $post_id, 'TMDB_runtime', true );
-        $status           = (string) get_post_meta( $post_id, 'TMDB_status', true );
-        $vote_average     = (float) get_post_meta( $post_id, 'TMDB_vote_average', true );
-        $vote_count       = (int) get_post_meta( $post_id, 'TMDB_vote_count', true );
-        $homepage         = (string) get_post_meta( $post_id, 'TMDB_homepage', true );
-        $origin_countries = get_post_meta( $post_id, 'TMDB_origin_countries', true );
-        $spoken_languages = get_post_meta( $post_id, 'TMDB_spoken_languages', true );
-        $alternative      = get_post_meta( $post_id, 'TMDB_alternative_titles', true );
-        $cast_meta        = get_post_meta( $post_id, 'TMDB_cast', true );
-        $actor_term_ids   = get_post_meta( $post_id, 'TMDB_actor_ids', true );
-        $director_meta    = get_post_meta( $post_id, 'TMDB_directors', true );
-        $director_term_ids = get_post_meta( $post_id, 'TMDB_director_ids', true );
-        $videos_payload   = get_post_meta( $post_id, 'TMDB_videos_payload', true );
+        $post_id            = get_the_ID();
+        $tagline            = (string) get_post_meta( $post_id, 'TMDB_tagline', true );
+        $original_title     = (string) get_post_meta( $post_id, 'TMDB_original_title', true );
+        $release_date_raw   = (string) get_post_meta( $post_id, 'TMDB_release_date', true );
+        $runtime_minutes    = (int) get_post_meta( $post_id, 'TMDB_runtime', true );
+        $status             = (string) get_post_meta( $post_id, 'TMDB_status', true );
+        $vote_average       = (float) get_post_meta( $post_id, 'TMDB_vote_average', true );
+        $vote_count         = (int) get_post_meta( $post_id, 'TMDB_vote_count', true );
+        $homepage           = (string) get_post_meta( $post_id, 'TMDB_homepage', true );
+        $primary_language   = (string) get_post_meta( $post_id, 'TMDB_language', true );
+        $origin_countries   = get_post_meta( $post_id, 'TMDB_origin_countries', true );
+        $spoken_languages   = get_post_meta( $post_id, 'TMDB_spoken_languages', true );
+        $alternative        = get_post_meta( $post_id, 'TMDB_alternative_titles', true );
+        $collection         = get_post_meta( $post_id, 'TMDB_collection', true );
+        $websites_meta      = get_post_meta( $post_id, 'TMDB_websites', true );
+        $primary_website    = get_post_meta( $post_id, 'TMDB_primary_website', true );
+        $external_ids_meta  = get_post_meta( $post_id, 'TMDB_external_ids', true );
+        $gallery_ids_meta   = get_post_meta( $post_id, 'TMDB_gallery_image_ids', true );
+        $videos_payload     = get_post_meta( $post_id, 'TMDB_videos_payload', true );
+        $cast_meta          = get_post_meta( $post_id, 'TMDB_cast', true );
+        $actor_term_ids     = get_post_meta( $post_id, 'TMDB_actor_ids', true );
+        $director_meta      = get_post_meta( $post_id, 'TMDB_directors', true );
+        $director_term_ids  = get_post_meta( $post_id, 'TMDB_director_ids', true );
 
         $release_date = '';
 
@@ -44,6 +50,8 @@ get_header();
 
             if ( false !== $timestamp ) {
                 $release_date = wp_date( get_option( 'date_format' ), $timestamp );
+            } else {
+                $release_date = $release_date_raw;
             }
         }
 
@@ -134,13 +142,6 @@ get_header();
             ];
         }
 
-        if ( '' !== $tagline ) {
-            $meta_rows[] = [
-                'label' => __( 'Tagline', 'tmdb-plugin' ),
-                'value' => $tagline,
-            ];
-        }
-
         if ( '' !== $release_date ) {
             $meta_rows[] = [
                 'label' => __( 'Release date', 'tmdb-plugin' ),
@@ -183,11 +184,24 @@ get_header();
             ];
         }
 
+        if ( '' !== $primary_language ) {
+            $meta_rows[] = [
+                'label' => __( 'Primary language', 'tmdb-plugin' ),
+                'value' => strtoupper( sanitize_text_field( $primary_language ) ),
+            ];
+        }
+
+        if ( is_array( $collection ) && ! empty( $collection['name'] ) ) {
+            $meta_rows[] = [
+                'label' => __( 'Collection', 'tmdb-plugin' ),
+                'value' => sanitize_text_field( (string) $collection['name'] ),
+            ];
+        }
+
         $taxonomy_sections = [];
 
         $director_terms = get_the_terms( $post_id, TMDB_Taxonomies::DIRECTOR );
-
-        $genre_terms = get_the_terms( $post_id, TMDB_Taxonomies::GENRE );
+        $genre_terms    = get_the_terms( $post_id, TMDB_Taxonomies::GENRE );
 
         if ( $genre_terms && ! is_wp_error( $genre_terms ) ) {
             $taxonomy_sections[] = [
@@ -311,8 +325,7 @@ get_header();
             ];
         }
 
-        $alternative_titles = [];
-        $videos             = [];
+        $videos = [];
 
         if ( is_string( $videos_payload ) && '' !== $videos_payload ) {
             $decoded_videos = json_decode( $videos_payload, true );
@@ -384,6 +397,8 @@ get_header();
             }
         }
 
+        $alternative_titles = [];
+
         if ( is_array( $alternative ) ) {
             foreach ( $alternative as $entry ) {
                 if ( ! is_array( $entry ) || empty( $entry['title'] ) ) {
@@ -399,33 +414,198 @@ get_header();
                 $alternative_titles[] = sanitize_text_field( $title );
             }
         }
-        ?>
-        <article id="post-<?php the_ID(); ?>" <?php post_class( 'card bg-transparent border-0' ); ?>>
-            <header class="card-body pb-0">
-                <h1 class="display-4 fw-bold text-light"><?php the_title(); ?></h1>
-                <?php if ( '' !== $tagline ) : ?>
-                    <p class="lead text-muted"><?php echo esc_html( $tagline ); ?></p>
-                <?php endif; ?>
-            </header>
 
-            <div class="card-body">
-                <div class="row g-5 align-items-start">
+        $websites = [];
+
+        if ( is_array( $websites_meta ) ) {
+            foreach ( $websites_meta as $website_entry ) {
+                if ( ! is_array( $website_entry ) || empty( $website_entry['url'] ) ) {
+                    continue;
+                }
+
+                $label = '';
+
+                if ( isset( $website_entry['name'] ) && '' !== $website_entry['name'] ) {
+                    $label = (string) $website_entry['name'];
+                } elseif ( isset( $website_entry['type'] ) && '' !== $website_entry['type'] ) {
+                    $label = (string) $website_entry['type'];
+                } elseif ( isset( $website_entry['site'] ) && '' !== $website_entry['site'] ) {
+                    $label = (string) $website_entry['site'];
+                } else {
+                    $label = (string) $website_entry['url'];
+                }
+
+                $details = [];
+
+                if ( ! empty( $website_entry['official'] ) ) {
+                    $details[] = __( 'Official', 'tmdb-theme' );
+                }
+
+                if ( isset( $website_entry['type'] ) && '' !== $website_entry['type'] ) {
+                    $details[] = sanitize_text_field( (string) $website_entry['type'] );
+                }
+
+                if ( isset( $website_entry['iso_3166_1'] ) && '' !== $website_entry['iso_3166_1'] ) {
+                    $details[] = strtoupper( sanitize_text_field( (string) $website_entry['iso_3166_1'] ) );
+                }
+
+                if ( isset( $website_entry['site'] ) && '' !== $website_entry['site'] ) {
+                    $details[] = sanitize_text_field( (string) $website_entry['site'] );
+                }
+
+                $websites[] = [
+                    'url'     => esc_url( (string) $website_entry['url'] ),
+                    'label'   => sanitize_text_field( $label ),
+                    'details' => $details,
+                ];
+            }
+        }
+
+        $external_ids = [];
+
+        if ( is_array( $external_ids_meta ) ) {
+            $external_links = [
+                'imdb_id'     => 'https://www.imdb.com/title/%s/',
+                'facebook_id' => 'https://www.facebook.com/%s',
+                'instagram_id'=> 'https://www.instagram.com/%s',
+                'twitter_id'  => 'https://twitter.com/%s',
+                'wikidata_id' => 'https://www.wikidata.org/wiki/%s',
+                'tiktok_id'   => 'https://www.tiktok.com/@%s',
+                'youtube_id'  => 'https://www.youtube.com/%s',
+            ];
+
+            foreach ( $external_ids_meta as $key => $value ) {
+                if ( ! is_string( $key ) || '' === $key ) {
+                    continue;
+                }
+
+                $normalized_key = sanitize_key( $key );
+                $clean_value    = sanitize_text_field( (string) $value );
+
+                if ( '' === $clean_value ) {
+                    continue;
+                }
+
+                $label = ucwords( str_replace( '_', ' ', $normalized_key ) );
+                $link  = '';
+
+                if ( isset( $external_links[ $normalized_key ] ) ) {
+                    $link = sprintf( $external_links[ $normalized_key ], rawurlencode( $clean_value ) );
+                }
+
+                $external_ids[] = [
+                    'label' => $label,
+                    'value' => $clean_value,
+                    'link'  => $link,
+                ];
+            }
+        }
+
+        $gallery_items = [];
+
+        if ( is_array( $gallery_ids_meta ) ) {
+            foreach ( $gallery_ids_meta as $attachment_id ) {
+                $attachment_id = (int) $attachment_id;
+
+                if ( $attachment_id <= 0 ) {
+                    continue;
+                }
+
+                $image_html = wp_get_attachment_image( $attachment_id, 'large', false, [
+                    'class'   => 'img-fluid rounded shadow-sm w-100',
+                    'loading' => 'lazy',
+                ] );
+
+                if ( ! $image_html ) {
+                    continue;
+                }
+
+                $full_url = wp_get_attachment_url( $attachment_id );
+                $caption  = get_post_field( 'post_excerpt', $attachment_id );
+
+                $gallery_items[] = [
+                    'html'    => $image_html,
+                    'full'    => $full_url ? esc_url( $full_url ) : '',
+                    'caption' => $caption ? wp_kses_post( $caption ) : '',
+                ];
+            }
+        }
+
+        $has_people  = ! empty( $director_list ) || ! empty( $cast_list );
+        $has_videos  = ! empty( $videos );
+        $has_gallery = ! empty( $gallery_items );
+
+        $summary_badges = [];
+
+        if ( '' !== $release_date ) {
+            $summary_badges[] = [
+                'label' => __( 'Release', 'tmdb-theme' ),
+                'value' => $release_date,
+            ];
+        }
+
+        if ( '' !== $runtime ) {
+            $summary_badges[] = [
+                'label' => __( 'Runtime', 'tmdb-theme' ),
+                'value' => $runtime,
+            ];
+        }
+
+        if ( '' !== $status ) {
+            $summary_badges[] = [
+                'label' => __( 'Status', 'tmdb-theme' ),
+                'value' => $status,
+            ];
+        }
+
+        if ( '' !== $rating ) {
+            $summary_badges[] = [
+                'label' => __( 'Rating', 'tmdb-theme' ),
+                'value' => $rating,
+            ];
+        }
+
+        $tabs = [
+            'overview' => __( 'Overview', 'tmdb-theme' ),
+        ];
+
+        if ( $has_people ) {
+            $tabs['people'] = __( 'Cast & Crew', 'tmdb-theme' );
+        }
+
+        if ( $has_videos ) {
+            $tabs['videos'] = __( 'Videos', 'tmdb-theme' );
+        }
+
+        if ( $has_gallery ) {
+            $tabs['gallery'] = __( 'Gallery', 'tmdb-theme' );
+        }
+        ?>
+        <article id="post-<?php the_ID(); ?>" <?php post_class( 'movie-detail card border-0 shadow-sm' ); ?>>
+            <div class="card-body p-4 p-lg-5">
+                <header class="mb-4 text-center text-lg-start">
+                    <h1 class="display-4 fw-bold mb-2"><?php the_title(); ?></h1>
+                    <?php if ( '' !== $tagline ) : ?>
+                        <p class="lead text-muted mb-0"><?php echo esc_html( $tagline ); ?></p>
+                    <?php endif; ?>
+                </header>
+
+                <div class="row g-4 align-items-start mb-4">
                     <?php if ( has_post_thumbnail() ) : ?>
-                        <div class="col-lg-4">
+                        <div class="col-lg-4 col-xl-3">
                             <div class="ratio ratio-2x3 rounded overflow-hidden shadow-sm">
                                 <?php the_post_thumbnail( 'large', [ 'class' => 'w-100 h-100 object-fit-cover' ] ); ?>
                             </div>
                         </div>
                     <?php endif; ?>
-
-                    <div class="col-lg-8">
-                        <?php if ( ! empty( $meta_rows ) ) : ?>
-                            <div class="row g-3 mb-4">
-                                <?php foreach ( $meta_rows as $row ) : ?>
-                                    <div class="col-sm-6">
-                                        <div class="p-3 border border-secondary rounded-3 h-100">
-                                            <h2 class="h6 text-info text-uppercase mb-1"><?php echo esc_html( $row['label'] ); ?></h2>
-                                            <p class="mb-0"><?php echo esc_html( $row['value'] ); ?></p>
+                    <div class="col">
+                        <?php if ( ! empty( $summary_badges ) ) : ?>
+                            <div class="row g-3 mb-3">
+                                <?php foreach ( $summary_badges as $badge ) : ?>
+                                    <div class="col-sm-6 col-xl-3">
+                                        <div class="tmdb-summary-tile">
+                                            <span class="tmdb-summary-label"><?php echo esc_html( $badge['label'] ); ?></span>
+                                            <span class="tmdb-summary-value"><?php echo esc_html( $badge['value'] ); ?></span>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
@@ -433,14 +613,66 @@ get_header();
                         <?php endif; ?>
 
                         <?php if ( '' !== $homepage ) : ?>
-                            <p class="mb-4">
-                                <a class="btn btn-outline-info" href="<?php echo esc_url( $homepage ); ?>" target="_blank" rel="noopener noreferrer">
-                                    <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
-                                </a>
-                            </p>
+                            <a class="btn btn-outline-primary" href="<?php echo esc_url( $homepage ); ?>" target="_blank" rel="noopener noreferrer">
+                                <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
+                            </a>
+                        <?php elseif ( is_array( $primary_website ) && ! empty( $primary_website['url'] ) ) : ?>
+                            <a class="btn btn-outline-primary" href="<?php echo esc_url( (string) $primary_website['url'] ); ?>" target="_blank" rel="noopener noreferrer">
+                                <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <ul class="nav nav-tabs" id="movie-detail-tabs" role="tablist">
+                    <?php
+                    $index = 0;
+                    foreach ( $tabs as $slug => $label ) :
+                        $is_active = 0 === $index;
+                        ?>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link<?php echo $is_active ? ' active' : ''; ?>" id="<?php echo esc_attr( $slug ); ?>-tab" data-bs-toggle="tab" data-bs-target="#<?php echo esc_attr( $slug ); ?>" type="button" role="tab" aria-controls="<?php echo esc_attr( $slug ); ?>" aria-selected="<?php echo $is_active ? 'true' : 'false'; ?>">
+                                <?php echo esc_html( $label ); ?>
+                            </button>
+                        </li>
+                        <?php
+                        $index++;
+                    endforeach;
+                    ?>
+                </ul>
+
+                <div class="tab-content pt-4" id="movie-detail-tabs-content">
+                    <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+                        <?php if ( ! empty( $meta_rows ) ) : ?>
+                            <div class="row g-3 mb-4">
+                                <?php foreach ( $meta_rows as $row ) : ?>
+                                    <div class="col-md-6 col-xl-4">
+                                        <div class="tmdb-meta-tile h-100">
+                                            <h2 class="h6 text-uppercase text-muted mb-1"><?php echo esc_html( $row['label'] ); ?></h2>
+                                            <p class="mb-0 fw-semibold"><?php echo esc_html( $row['value'] ); ?></p>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         <?php endif; ?>
 
-                        <div class="entry-content mb-5">
+                        <?php if ( ! empty( $websites ) ) : ?>
+                            <section class="mb-4">
+                                <h2 class="h6 text-uppercase text-muted mb-2"><?php esc_html_e( 'Websites', 'tmdb-theme' ); ?></h2>
+                                <ul class="list-unstyled tmdb-website-list mb-0">
+                                    <?php foreach ( $websites as $website ) : ?>
+                                        <li class="tmdb-website-item">
+                                            <a class="fw-semibold" href="<?php echo esc_url( $website['url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $website['label'] ); ?></a>
+                                            <?php if ( ! empty( $website['details'] ) ) : ?>
+                                                <span class="text-muted small ms-2"><?php echo esc_html( implode( ' · ', $website['details'] ) ); ?></span>
+                                            <?php endif; ?>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </section>
+                        <?php endif; ?>
+
+                        <div class="entry-content mb-4">
                             <?php the_content(); ?>
                         </div>
 
@@ -450,7 +682,7 @@ get_header();
                             }
                             ?>
                             <section class="mb-4">
-                                <h2 class="h5 text-info text-uppercase fw-semibold mb-3"><?php echo esc_html( $section['label'] ); ?></h2>
+                                <h2 class="h6 text-uppercase text-muted fw-semibold mb-2"><?php echo esc_html( $section['label'] ); ?></h2>
                                 <div class="d-flex flex-wrap gap-2">
                                     <?php foreach ( $section['terms'] as $term ) :
                                         if ( ! $term instanceof \WP_Term ) {
@@ -463,146 +695,187 @@ get_header();
                                             continue;
                                         }
                                         ?>
-                                        <a class="badge bg-info text-dark" href="<?php echo esc_url( $term_link ); ?>"><?php echo esc_html( $term->name ); ?></a>
+                                        <a class="badge bg-secondary-subtle text-secondary" href="<?php echo esc_url( $term_link ); ?>"><?php echo esc_html( $term->name ); ?></a>
                                     <?php endforeach; ?>
                                 </div>
                             </section>
                         <?php endforeach; ?>
 
-                        <?php if ( ! empty( $director_list ) ) : ?>
-                            <section class="mb-5">
-                                <h2 class="h5 text-info text-uppercase fw-semibold mb-3"><?php esc_html_e( 'Directors', 'tmdb-plugin' ); ?></h2>
-                                <div class="row g-3">
-                                    <?php foreach ( $director_list as $director ) : ?>
-                                        <div class="col-md-6">
-                                            <div class="card h-100 bg-dark-subtle bg-opacity-10 border-0">
-                                                <div class="card-body d-flex align-items-center gap-3">
-                                                    <?php if ( '' !== $director['image_url'] ) : ?>
-                                                        <span class="avatar flex-shrink-0 rounded-circle overflow-hidden">
-                                                            <img class="w-100 h-100 object-fit-cover" src="<?php echo esc_url( $director['image_url'] ); ?>" alt="<?php echo esc_attr( $director['name'] ); ?>" loading="lazy" />
-                                                        </span>
-                                                    <?php endif; ?>
-                                                    <div>
-                                                        <?php if ( '' !== $director['term_link'] ) : ?>
-                                                            <a class="stretched-link text-info fw-semibold" href="<?php echo esc_url( $director['term_link'] ); ?>"><?php echo esc_html( $director['name'] ); ?></a>
-                                                        <?php else : ?>
-                                                            <span class="text-info fw-semibold"><?php echo esc_html( $director['name'] ); ?></span>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $director['original_name'] && $director['original_name'] !== $director['name'] ) : ?>
-                                                            <div class="text-muted small"><?php echo esc_html( $director['original_name'] ); ?></div>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $director['job'] ) : ?>
-                                                            <div class="text-muted small"><?php echo esc_html( $director['job'] ); ?></div>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </section>
-                        <?php endif; ?>
-
-                        <?php if ( ! empty( $cast_list ) ) : ?>
-                            <section class="mb-5">
-                                <h2 class="h5 text-info text-uppercase fw-semibold mb-3"><?php esc_html_e( 'Cast', 'tmdb-plugin' ); ?></h2>
-                                <div class="row g-3">
-                                    <?php foreach ( $cast_list as $cast_member ) : ?>
-                                        <div class="col-md-6 col-xl-4">
-                                            <div class="card h-100 bg-dark-subtle bg-opacity-10 border-0 position-relative">
-                                                <div class="card-body d-flex gap-3 align-items-center">
-                                                    <?php if ( '' !== $cast_member['image_url'] ) : ?>
-                                                        <span class="avatar flex-shrink-0 rounded-circle overflow-hidden">
-                                                            <img class="w-100 h-100 object-fit-cover" src="<?php echo esc_url( $cast_member['image_url'] ); ?>" alt="<?php echo esc_attr( $cast_member['name'] ); ?>" loading="lazy" />
-                                                        </span>
-                                                    <?php endif; ?>
-                                                    <div>
-                                                        <?php if ( '' !== $cast_member['term_link'] ) : ?>
-                                                            <a class="stretched-link text-info fw-semibold" href="<?php echo esc_url( $cast_member['term_link'] ); ?>"><?php echo esc_html( $cast_member['name'] ); ?></a>
-                                                        <?php else : ?>
-                                                            <span class="text-info fw-semibold"><?php echo esc_html( $cast_member['name'] ); ?></span>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $cast_member['character'] ) : ?>
-                                                            <div class="text-muted small"><?php echo esc_html( $cast_member['character'] ); ?></div>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $cast_member['original_name'] && $cast_member['original_name'] !== $cast_member['name'] ) : ?>
-                                                            <div class="text-muted small"><?php echo esc_html( $cast_member['original_name'] ); ?></div>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </section>
-                        <?php endif; ?>
-
-                        <?php if ( ! empty( $videos ) ) : ?>
-                            <section class="mb-5">
-                                <h2 class="h5 text-info text-uppercase fw-semibold mb-3"><?php esc_html_e( 'Videos', 'tmdb-plugin' ); ?></h2>
-                                <div class="row g-4">
-                                    <?php foreach ( $videos as $video ) : ?>
-                                        <div class="col-lg-6">
-                                            <article class="card h-100 bg-dark-subtle bg-opacity-10 border-0">
-                                                <?php if ( '' !== $video['embed_url'] ) : ?>
-                                                    <div class="ratio ratio-16x9">
-                                                        <iframe src="<?php echo esc_url( $video['embed_url'] ); ?>" title="<?php echo esc_attr( $video['name'] ); ?>" allowfullscreen loading="lazy"></iframe>
-                                                    </div>
-                                                <?php elseif ( '' !== $video['video_url'] ) : ?>
-                                                    <div class="card-body pb-0">
-                                                        <a class="btn btn-outline-info" href="<?php echo esc_url( $video['video_url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Watch video', 'tmdb-plugin' ); ?></a>
-                                                    </div>
-                                                <?php endif; ?>
-
-                                                <div class="card-body">
-                                                    <?php if ( '' !== $video['name'] ) : ?>
-                                                        <h3 class="h5 text-light"><?php echo esc_html( $video['name'] ); ?></h3>
-                                                    <?php endif; ?>
-                                                    <dl class="row gy-2 small text-muted mb-0">
-                                                        <?php if ( '' !== $video['type'] ) : ?>
-                                                            <dt class="col-5"><?php esc_html_e( 'Type', 'tmdb-plugin' ); ?></dt>
-                                                            <dd class="col-7"><?php echo esc_html( $video['type'] ); ?></dd>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $video['site'] ) : ?>
-                                                            <dt class="col-5"><?php esc_html_e( 'Platform', 'tmdb-plugin' ); ?></dt>
-                                                            <dd class="col-7"><?php echo esc_html( $video['site'] ); ?></dd>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $video['country'] ) : ?>
-                                                            <dt class="col-5"><?php esc_html_e( 'Country', 'tmdb-plugin' ); ?></dt>
-                                                            <dd class="col-7"><?php echo esc_html( $video['country'] ); ?></dd>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $video['language'] ) : ?>
-                                                            <dt class="col-5"><?php esc_html_e( 'Language', 'tmdb-plugin' ); ?></dt>
-                                                            <dd class="col-7"><?php echo esc_html( $video['language'] ); ?></dd>
-                                                        <?php endif; ?>
-                                                        <?php if ( ! empty( $video['official'] ) ) : ?>
-                                                            <dt class="col-5"><?php esc_html_e( 'Official', 'tmdb-plugin' ); ?></dt>
-                                                            <dd class="col-7"><?php esc_html_e( 'Yes', 'tmdb-plugin' ); ?></dd>
-                                                        <?php endif; ?>
-                                                        <?php if ( '' !== $video['published_at'] ) : ?>
-                                                            <dt class="col-5"><?php esc_html_e( 'Published', 'tmdb-plugin' ); ?></dt>
-                                                            <dd class="col-7"><?php echo esc_html( $video['published_at'] ); ?></dd>
-                                                        <?php endif; ?>
-                                                    </dl>
-                                                </div>
-                                            </article>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </section>
-                        <?php endif; ?>
-
                         <?php if ( ! empty( $alternative_titles ) ) : ?>
-                            <section class="mb-5">
-                                <h2 class="h5 text-info text-uppercase fw-semibold mb-3"><?php esc_html_e( 'Alternative titles', 'tmdb-plugin' ); ?></h2>
+                            <section class="mb-4">
+                                <h2 class="h6 text-uppercase text-muted fw-semibold mb-2"><?php esc_html_e( 'Alternative titles', 'tmdb-plugin' ); ?></h2>
                                 <div class="d-flex flex-wrap gap-2">
                                     <?php foreach ( $alternative_titles as $title ) : ?>
-                                        <span class="badge bg-secondary text-uppercase"><?php echo esc_html( $title ); ?></span>
+                                        <span class="badge bg-light text-dark border"><?php echo esc_html( $title ); ?></span>
                                     <?php endforeach; ?>
                                 </div>
+                            </section>
+                        <?php endif; ?>
+
+                        <?php if ( ! empty( $external_ids ) ) : ?>
+                            <section>
+                                <h2 class="h6 text-uppercase text-muted fw-semibold mb-2"><?php esc_html_e( 'External IDs', 'tmdb-theme' ); ?></h2>
+                                <dl class="row gy-2">
+                                    <?php foreach ( $external_ids as $external ) : ?>
+                                        <dt class="col-sm-4 col-lg-3 text-muted"><?php echo esc_html( $external['label'] ); ?></dt>
+                                        <dd class="col-sm-8 col-lg-9 mb-0">
+                                            <?php if ( '' !== $external['link'] ) : ?>
+                                                <a href="<?php echo esc_url( $external['link'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $external['value'] ); ?></a>
+                                            <?php else : ?>
+                                                <?php echo esc_html( $external['value'] ); ?>
+                                            <?php endif; ?>
+                                        </dd>
+                                    <?php endforeach; ?>
+                                </dl>
                             </section>
                         <?php endif; ?>
                     </div>
+
+                    <?php if ( isset( $tabs['people'] ) ) : ?>
+                        <div class="tab-pane fade" id="people" role="tabpanel" aria-labelledby="people-tab">
+                            <?php if ( ! empty( $director_list ) ) : ?>
+                                <section class="mb-5">
+                                    <h2 class="h5 fw-semibold mb-3"><?php esc_html_e( 'Directors', 'tmdb-plugin' ); ?></h2>
+                                    <div class="row g-3">
+                                        <?php foreach ( $director_list as $director ) : ?>
+                                            <div class="col-sm-6 col-lg-4">
+                                                <article class="card h-100 border-0 shadow-sm">
+                                                    <div class="card-body d-flex gap-3 align-items-center">
+                                                        <?php if ( '' !== $director['image_url'] ) : ?>
+                                                            <span class="avatar flex-shrink-0 rounded-circle overflow-hidden">
+                                                                <img class="w-100 h-100 object-fit-cover" src="<?php echo esc_url( $director['image_url'] ); ?>" alt="<?php echo esc_attr( $director['name'] ); ?>" loading="lazy" />
+                                                            </span>
+                                                        <?php endif; ?>
+                                                        <div class="flex-grow-1 position-relative">
+                                                            <?php if ( '' !== $director['term_link'] ) : ?>
+                                                                <a class="stretched-link fw-semibold text-reset text-decoration-none" href="<?php echo esc_url( $director['term_link'] ); ?>"><?php echo esc_html( $director['name'] ); ?></a>
+                                                            <?php else : ?>
+                                                                <span class="fw-semibold"><?php echo esc_html( $director['name'] ); ?></span>
+                                                            <?php endif; ?>
+                                                            <?php if ( '' !== $director['original_name'] && $director['original_name'] !== $director['name'] ) : ?>
+                                                                <div class="text-muted small"><?php echo esc_html( $director['original_name'] ); ?></div>
+                                                            <?php endif; ?>
+                                                            <?php if ( '' !== $director['job'] ) : ?>
+                                                                <div class="text-muted small"><?php echo esc_html( $director['job'] ); ?></div>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                </article>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </section>
+                            <?php endif; ?>
+
+                            <?php if ( ! empty( $cast_list ) ) : ?>
+                                <section>
+                                    <h2 class="h5 fw-semibold mb-3"><?php esc_html_e( 'Cast', 'tmdb-plugin' ); ?></h2>
+                                    <div class="row g-3">
+                                        <?php foreach ( $cast_list as $cast_member ) : ?>
+                                            <div class="col-sm-6 col-lg-4">
+                                                <article class="card h-100 border-0 shadow-sm">
+                                                    <div class="card-body d-flex gap-3 align-items-center">
+                                                        <?php if ( '' !== $cast_member['image_url'] ) : ?>
+                                                            <span class="avatar flex-shrink-0 rounded-circle overflow-hidden">
+                                                                <img class="w-100 h-100 object-fit-cover" src="<?php echo esc_url( $cast_member['image_url'] ); ?>" alt="<?php echo esc_attr( $cast_member['name'] ); ?>" loading="lazy" />
+                                                            </span>
+                                                        <?php endif; ?>
+                                                        <div class="flex-grow-1 position-relative">
+                                                            <?php if ( '' !== $cast_member['term_link'] ) : ?>
+                                                                <a class="stretched-link fw-semibold text-reset text-decoration-none" href="<?php echo esc_url( $cast_member['term_link'] ); ?>"><?php echo esc_html( $cast_member['name'] ); ?></a>
+                                                            <?php else : ?>
+                                                                <span class="fw-semibold"><?php echo esc_html( $cast_member['name'] ); ?></span>
+                                                            <?php endif; ?>
+                                                            <?php if ( '' !== $cast_member['character'] ) : ?>
+                                                                <div class="text-muted small"><?php echo esc_html( $cast_member['character'] ); ?></div>
+                                                            <?php endif; ?>
+                                                            <?php if ( '' !== $cast_member['original_name'] && $cast_member['original_name'] !== $cast_member['name'] ) : ?>
+                                                                <div class="text-muted small"><?php echo esc_html( $cast_member['original_name'] ); ?></div>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                </article>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </section>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ( $has_videos ) : ?>
+                        <div class="tab-pane fade" id="videos" role="tabpanel" aria-labelledby="videos-tab">
+                            <div class="row g-4">
+                                <?php foreach ( $videos as $video ) : ?>
+                                    <div class="col-lg-6">
+                                        <article class="card h-100 border-0 shadow-sm">
+                                            <?php if ( '' !== $video['embed_url'] ) : ?>
+                                                <div class="ratio ratio-16x9">
+                                                    <iframe src="<?php echo esc_url( $video['embed_url'] ); ?>" title="<?php echo esc_attr( $video['name'] ); ?>" allowfullscreen loading="lazy"></iframe>
+                                                </div>
+                                            <?php elseif ( '' !== $video['video_url'] ) : ?>
+                                                <div class="card-body pb-0">
+                                                    <a class="btn btn-outline-primary" href="<?php echo esc_url( $video['video_url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Watch video', 'tmdb-plugin' ); ?></a>
+                                                </div>
+                                            <?php endif; ?>
+                                            <div class="card-body">
+                                                <?php if ( '' !== $video['name'] ) : ?>
+                                                    <h3 class="h5 fw-semibold mb-3"><?php echo esc_html( $video['name'] ); ?></h3>
+                                                <?php endif; ?>
+                                                <dl class="row gy-2 small text-muted mb-0">
+                                                    <?php if ( '' !== $video['type'] ) : ?>
+                                                        <dt class="col-5"><?php esc_html_e( 'Type', 'tmdb-plugin' ); ?></dt>
+                                                        <dd class="col-7 mb-0"><?php echo esc_html( $video['type'] ); ?></dd>
+                                                    <?php endif; ?>
+                                                    <?php if ( '' !== $video['site'] ) : ?>
+                                                        <dt class="col-5"><?php esc_html_e( 'Platform', 'tmdb-plugin' ); ?></dt>
+                                                        <dd class="col-7 mb-0"><?php echo esc_html( $video['site'] ); ?></dd>
+                                                    <?php endif; ?>
+                                                    <?php if ( '' !== $video['country'] ) : ?>
+                                                        <dt class="col-5"><?php esc_html_e( 'Country', 'tmdb-plugin' ); ?></dt>
+                                                        <dd class="col-7 mb-0"><?php echo esc_html( $video['country'] ); ?></dd>
+                                                    <?php endif; ?>
+                                                    <?php if ( '' !== $video['language'] ) : ?>
+                                                        <dt class="col-5"><?php esc_html_e( 'Language', 'tmdb-plugin' ); ?></dt>
+                                                        <dd class="col-7 mb-0"><?php echo esc_html( $video['language'] ); ?></dd>
+                                                    <?php endif; ?>
+                                                    <?php if ( ! empty( $video['official'] ) ) : ?>
+                                                        <dt class="col-5"><?php esc_html_e( 'Official', 'tmdb-plugin' ); ?></dt>
+                                                        <dd class="col-7 mb-0"><?php esc_html_e( 'Yes', 'tmdb-plugin' ); ?></dd>
+                                                    <?php endif; ?>
+                                                    <?php if ( '' !== $video['published_at'] ) : ?>
+                                                        <dt class="col-5"><?php esc_html_e( 'Published', 'tmdb-plugin' ); ?></dt>
+                                                        <dd class="col-7 mb-0"><?php echo esc_html( $video['published_at'] ); ?></dd>
+                                                    <?php endif; ?>
+                                                </dl>
+                                            </div>
+                                        </article>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if ( $has_gallery ) : ?>
+                        <div class="tab-pane fade" id="gallery" role="tabpanel" aria-labelledby="gallery-tab">
+                            <div class="row g-4">
+                                <?php foreach ( $gallery_items as $item ) : ?>
+                                    <div class="col-sm-6 col-lg-4">
+                                        <figure class="tmdb-gallery-item">
+                                            <?php if ( '' !== $item['full'] ) : ?>
+                                                <a href="<?php echo esc_url( $item['full'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo $item['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></a>
+                                            <?php else : ?>
+                                                <?php echo $item['html']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                                            <?php endif; ?>
+                                            <?php if ( '' !== $item['caption'] ) : ?>
+                                                <figcaption class="small text-muted mt-2"><?php echo $item['caption']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></figcaption>
+                                            <?php endif; ?>
+                                        </figure>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </article>
