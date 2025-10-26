@@ -38,6 +38,7 @@ get_header();
         $external_ids_meta  = get_post_meta( $post_id, 'TMDB_external_ids', true );
         $gallery_ids_meta   = get_post_meta( $post_id, 'TMDB_gallery_image_ids', true );
         $videos_payload     = get_post_meta( $post_id, 'TMDB_videos_payload', true );
+        $trailer_meta       = get_post_meta( $post_id, 'TMDB_trailer', true );
         $cast_meta          = get_post_meta( $post_id, 'TMDB_cast', true );
         $actor_term_ids     = get_post_meta( $post_id, 'TMDB_actor_ids', true );
         $director_meta      = get_post_meta( $post_id, 'TMDB_directors', true );
@@ -325,6 +326,48 @@ get_header();
             ];
         }
 
+        $trailer = [];
+
+        if ( is_array( $trailer_meta ) && ! empty( $trailer_meta['site'] ) ) {
+            $site         = strtolower( (string) $trailer_meta['site'] );
+            $key          = isset( $trailer_meta['key'] ) ? (string) $trailer_meta['key'] : '';
+            $watch_url    = isset( $trailer_meta['url'] ) ? (string) $trailer_meta['url'] : '';
+            $embed_url    = '';
+            $sanitized_key = '' !== $key ? rawurlencode( $key ) : '';
+
+            if ( 'youtube' === $site && '' !== $sanitized_key ) {
+                $embed_url = sprintf( 'https://www.youtube.com/embed/%s', $sanitized_key );
+                if ( '' === $watch_url ) {
+                    $watch_url = sprintf( 'https://www.youtube.com/watch?v=%s', $sanitized_key );
+                }
+            } elseif ( 'vimeo' === $site && '' !== $sanitized_key ) {
+                $embed_url = sprintf( 'https://player.vimeo.com/video/%s', $sanitized_key );
+                if ( '' === $watch_url ) {
+                    $watch_url = sprintf( 'https://vimeo.com/%s', $sanitized_key );
+                }
+            }
+
+            $published_display = '';
+
+            if ( ! empty( $trailer_meta['published_at'] ) ) {
+                $timestamp = strtotime( (string) $trailer_meta['published_at'] );
+
+                if ( false !== $timestamp ) {
+                    $published_display = wp_date( get_option( 'date_format' ), $timestamp );
+                }
+            }
+
+            $trailer = [
+                'name'         => isset( $trailer_meta['name'] ) ? sanitize_text_field( (string) $trailer_meta['name'] ) : '',
+                'site'         => isset( $trailer_meta['site'] ) ? sanitize_text_field( (string) $trailer_meta['site'] ) : '',
+                'type'         => isset( $trailer_meta['type'] ) ? sanitize_text_field( (string) $trailer_meta['type'] ) : '',
+                'official'     => ! empty( $trailer_meta['official'] ),
+                'published_at' => $published_display,
+                'embed_url'    => esc_url_raw( $embed_url ),
+                'watch_url'    => esc_url_raw( $watch_url ),
+            ];
+        }
+
         $videos = [];
 
         if ( is_string( $videos_payload ) && '' !== $videos_payload ) {
@@ -531,9 +574,24 @@ get_header();
             }
         }
 
-        $has_people  = ! empty( $director_list ) || ! empty( $cast_list );
-        $has_videos  = ! empty( $videos );
-        $has_gallery = ! empty( $gallery_items );
+        if ( empty( $videos ) && ! empty( $trailer ) ) {
+            $videos[] = [
+                'name'         => $trailer['name'],
+                'site'         => $trailer['site'],
+                'type'         => '' !== $trailer['type'] ? $trailer['type'] : __( 'Trailer', 'tmdb-plugin' ),
+                'country'      => '',
+                'language'     => '',
+                'official'     => $trailer['official'],
+                'published_at' => $trailer['published_at'],
+                'video_url'    => $trailer['watch_url'],
+                'embed_url'    => $trailer['embed_url'],
+            ];
+        }
+
+        $has_people   = ! empty( $director_list ) || ! empty( $cast_list );
+        $has_videos   = ! empty( $videos );
+        $has_gallery  = ! empty( $gallery_items );
+        $has_trailer  = ! empty( $trailer );
 
         $summary_badges = [];
 
@@ -599,6 +657,41 @@ get_header();
                         </div>
                     <?php endif; ?>
                     <div class="col">
+                        <?php if ( $has_trailer ) : ?>
+                            <section class="mb-4">
+                                <div class="card border-0 shadow-sm overflow-hidden">
+                                    <?php if ( '' !== $trailer['embed_url'] ) : ?>
+                                        <div class="ratio ratio-16x9">
+                                            <iframe src="<?php echo esc_url( $trailer['embed_url'] ); ?>" title="<?php echo esc_attr( $trailer['name'] ); ?>" allowfullscreen loading="lazy"></iframe>
+                                        </div>
+                                    <?php elseif ( '' !== $trailer['watch_url'] ) : ?>
+                                        <div class="card-body">
+                                            <a class="btn btn-outline-primary" href="<?php echo esc_url( $trailer['watch_url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Watch trailer', 'tmdb-plugin' ); ?></a>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="card-body">
+                                        <?php if ( '' !== $trailer['name'] ) : ?>
+                                            <h2 class="h5 fw-semibold mb-1"><?php echo esc_html( $trailer['name'] ); ?></h2>
+                                        <?php endif; ?>
+                                        <div class="d-flex flex-wrap gap-2 small text-muted">
+                                            <?php if ( '' !== $trailer['type'] ) : ?>
+                                                <span class="badge bg-primary-subtle text-primary-emphasis"><?php echo esc_html( $trailer['type'] ); ?></span>
+                                            <?php endif; ?>
+                                            <?php if ( '' !== $trailer['site'] ) : ?>
+                                                <span class="badge bg-secondary-subtle text-secondary"><?php echo esc_html( $trailer['site'] ); ?></span>
+                                            <?php endif; ?>
+                                            <?php if ( ! empty( $trailer['official'] ) ) : ?>
+                                                <span class="badge bg-success-subtle text-success"><?php esc_html_e( 'Official', 'tmdb-plugin' ); ?></span>
+                                            <?php endif; ?>
+                                            <?php if ( '' !== $trailer['published_at'] ) : ?>
+                                                <span><?php echo esc_html( $trailer['published_at'] ); ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                        <?php endif; ?>
+
                         <?php if ( ! empty( $summary_badges ) ) : ?>
                             <div class="row g-3 mb-3">
                                 <?php foreach ( $summary_badges as $badge ) : ?>
