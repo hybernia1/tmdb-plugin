@@ -38,6 +38,12 @@ a:focus {
     padding: 6rem 0;
 }
 
+.tmdb-hero.has-custom-bg {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
 .tmdb-hero h1 {
     font-size: 3rem;
     font-weight: 700;
