@@ -1,0 +1,146 @@
+/*
+Theme Name: TMDB Theme
+Theme URI: https://example.com/tmdb-theme
+Author: TMDB Plugin Team
+Author URI: https://example.com
+Description: A Bootstrap-based WordPress theme tailored for the TMDB plugin.
+Version: 1.0.0
+License: GNU General Public License v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: tmdb-theme
+*/
+
+/* Custom theme styles */
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #0f172a;
+    color: #e2e8f0;
+}
+
+a {
+    color: #38bdf8;
+}
+
+a:hover,
+a:focus {
+    color: #0ea5e9;
+    text-decoration: none;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.tmdb-hero {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.8), rgba(14, 116, 144, 0.8));
+    color: #f8fafc;
+    padding: 6rem 0;
+}
+
+.tmdb-hero h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+}
+
+.tmdb-hero p {
+    font-size: 1.25rem;
+    max-width: 40rem;
+}
+
+.card {
+    background-color: #1e293b;
+    border: none;
+    border-radius: 0.75rem;
+}
+
+.card-title a {
+    color: inherit;
+}
+
+.avatar {
+    width: 64px;
+    height: 64px;
+    display: block;
+}
+
+.card-img-top {
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+}
+
+.object-fit-cover {
+    object-fit: cover;
+}
+
+.ratio-2x3 {
+    --bs-aspect-ratio: 150%;
+}
+
+footer.site-footer {
+    background-color: #020617;
+    color: #94a3b8;
+}
+
+footer.site-footer a {
+    color: #38bdf8;
+}
+
+footer.site-footer a:hover {
+    color: #0ea5e9;
+}
+
+.widget-title {
+    color: #38bdf8;
+}
+
+.pagination .page-link {
+    background-color: transparent;
+    border-color: #38bdf8;
+    color: #38bdf8;
+}
+
+.pagination .page-link:hover {
+    background-color: #38bdf8;
+    color: #0f172a;
+}
+
+.pagination .active .page-link {
+    background-color: #38bdf8;
+    border-color: #38bdf8;
+    color: #0f172a;
+}
+
+.comment-form textarea,
+.comment-form input[type="text"],
+.comment-form input[type="email"] {
+    background-color: #0f172a;
+    border-color: #1e293b;
+    color: #e2e8f0;
+}
+
+.comment-form textarea:focus,
+.comment-form input[type="text"]:focus,
+.comment-form input[type="email"]:focus {
+    border-color: #38bdf8;
+    box-shadow: none;
+}
+
+.widget_search .search-field {
+    background-color: #0f172a;
+    border-color: #1e293b;
+    color: #e2e8f0;
+}
+
+.widget_search .search-submit {
+    background-color: #38bdf8;
+    border-color: #38bdf8;
+    color: #0f172a;
+}
+
+.widget_search .search-submit:hover {
+    background-color: #0ea5e9;
+    border-color: #0ea5e9;
+    color: #0f172a;
+}
