@@ -5,178 +5,181 @@
  * @package TMDB_Theme
  */
 
+use TMDB\Plugin\Taxonomies\TMDB_Taxonomies;
+
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
 get_header();
-?>
 
-<?php
-$movie_archive = post_type_exists( 'movie' ) ? get_post_type_archive_link( 'movie' ) : home_url( '/' );
+$movie_archive = post_type_exists( 'movie' ) ? get_post_type_archive_link( 'movie' ) : '';
 $blog_page_id  = (int) get_option( 'page_for_posts' );
-$blog_link     = $blog_page_id > 0 ? get_permalink( $blog_page_id ) : home_url( '/' );
+$blog_link     = $blog_page_id > 0 ? get_permalink( $blog_page_id ) : '';
 
-$hero_title        = get_theme_mod( 'tmdb_theme_hero_title', __( 'Objevujte svět filmů a seriálů', 'tmdb-theme' ) );
-$hero_description  = get_theme_mod( 'tmdb_theme_hero_description', __( 'Propojte WordPress s The Movie Database a přineste návštěvníkům aktuální informace o filmech, seriálech i tvůrcích.', 'tmdb-theme' ) );
-$hero_button_label = get_theme_mod( 'tmdb_theme_hero_button_label', __( 'Procházet filmy', 'tmdb-theme' ) );
-$hero_button_url   = get_theme_mod( 'tmdb_theme_hero_button_url' );
-$hero_background   = get_theme_mod( 'tmdb_theme_hero_background_image' );
+$movie_query = null;
 
-if ( empty( $hero_button_url ) ) {
-    $hero_button_url = $movie_archive;
-}
-
-$hero_classes = 'tmdb-hero text-center text-md-start';
-
-if ( ! empty( $hero_background ) ) {
-    $hero_classes .= ' has-custom-bg';
-}
-
-$hero_style = '';
-
-if ( ! empty( $hero_background ) ) {
-    $hero_style = sprintf(
-        ' style="background-image: linear-gradient(135deg, rgba(14, 165, 233, 0.75), rgba(14, 116, 144, 0.75)), url(%s);"',
-        esc_url( $hero_background )
+if ( post_type_exists( 'movie' ) ) {
+    $movie_query = new WP_Query(
+        array(
+            'post_type'      => 'movie',
+            'posts_per_page' => 8,
+            'no_found_rows'  => true,
+        )
     );
 }
+
+$blog_query = new WP_Query(
+    array(
+        'post_type'           => 'post',
+        'posts_per_page'      => 4,
+        'ignore_sticky_posts' => true,
+        'no_found_rows'       => true,
+    )
+);
 ?>
 
-<section class="<?php echo esc_attr( $hero_classes ); ?>"<?php echo $hero_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-lg-7">
-                <h1><?php echo esc_html( $hero_title ); ?></h1>
-                <?php if ( ! empty( $hero_description ) ) : ?>
-                    <p class="lead mb-4"><?php echo wp_kses_post( $hero_description ); ?></p>
-                <?php endif; ?>
-                <?php if ( ! empty( $hero_button_label ) ) : ?>
-                    <a class="btn btn-lg btn-info text-dark fw-semibold" href="<?php echo esc_url( $hero_button_url ); ?>">
-                        <?php echo esc_html( $hero_button_label ); ?>
-                    </a>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="py-5">
-    <div class="container">
-        <?php if ( post_type_exists( 'movie' ) ) : ?>
-            <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
-                <h2 class="h3 mb-0 text-uppercase text-info fw-semibold"><?php esc_html_e( 'Nejnovější filmy', 'tmdb-theme' ); ?></h2>
-                <a class="text-decoration-none" href="<?php echo esc_url( $movie_archive ); ?>">
-                    <?php esc_html_e( 'Zobrazit vše', 'tmdb-theme' ); ?>
-                </a>
-            </div>
-            <div class="row g-4">
-                <?php
-                $movies = new WP_Query(
-                    array(
-                        'post_type'      => 'movie',
-                        'posts_per_page' => 6,
-                    )
-                );
-
-                if ( $movies->have_posts() ) :
-                    while ( $movies->have_posts() ) :
-                        $movies->the_post();
-                        ?>
-                        <div class="col-md-6 col-xl-4">
-                            <article <?php post_class( 'card h-100 shadow-sm' ); ?>>
-                                <?php if ( has_post_thumbnail() ) : ?>
-                                    <a href="<?php the_permalink(); ?>">
-                                        <?php the_post_thumbnail( 'large', [ 'class' => 'card-img-top' ] ); ?>
-                                    </a>
+<div class="container py-5">
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <?php if ( have_posts() ) : ?>
+                <?php while ( have_posts() ) : the_post(); ?>
+                    <?php if ( '' !== get_the_content() ) : ?>
+                        <article id="post-<?php the_ID(); ?>" <?php post_class( 'card shadow-sm border-0 mb-5' ); ?>>
+                            <div class="card-body">
+                                <?php if ( '' !== get_the_title() ) : ?>
+                                    <h1 class="card-title h3 fw-bold mb-3"><?php the_title(); ?></h1>
                                 <?php endif; ?>
-                                <div class="card-body d-flex flex-column">
-                                    <h3 class="card-title h4">
-                                        <a class="stretched-link text-light" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
-                                    </h3>
-                                    <div class="mt-auto text-muted small">
-                                        <?php echo esc_html( get_the_date() ); ?>
-                                    </div>
-                                </div>
-                            </article>
-                        </div>
-                        <?php
-                    endwhile;
-                    wp_reset_postdata();
-                else :
-                    ?>
-                    <div class="col-12">
-                        <div class="alert alert-warning mb-0">
-                            <?php esc_html_e( 'Zatím nebyly přidány žádné filmy.', 'tmdb-theme' ); ?>
-                        </div>
-                    </div>
-                    <?php
-                endif;
-                ?>
-            </div>
-        <?php endif; ?>
-    </div>
-</section>
-
-<section class="py-5 bg-opacity-25 bg-black">
-    <div class="container">
-        <div class="d-flex flex-wrap align-items-center justify-content-between mb-4">
-            <h2 class="h3 mb-0 text-uppercase text-info fw-semibold"><?php esc_html_e( 'Nejnovější články', 'tmdb-theme' ); ?></h2>
-            <a class="text-decoration-none" href="<?php echo esc_url( $blog_link ); ?>">
-                <?php esc_html_e( 'Blog', 'tmdb-theme' ); ?>
-            </a>
-        </div>
-
-        <div class="row g-4">
-            <?php
-            $blog_posts = new WP_Query(
-                array(
-                    'post_type'           => 'post',
-                    'posts_per_page'      => 3,
-                    'ignore_sticky_posts' => true,
-                )
-            );
-
-            if ( $blog_posts->have_posts() ) :
-                while ( $blog_posts->have_posts() ) :
-                    $blog_posts->the_post();
-                    ?>
-                    <div class="col-md-4">
-                        <article <?php post_class( 'card h-100 shadow-sm' ); ?>>
-                            <?php if ( has_post_thumbnail() ) : ?>
-                                <a href="<?php the_permalink(); ?>">
-                                    <?php the_post_thumbnail( 'large', [ 'class' => 'card-img-top' ] ); ?>
-                                </a>
-                            <?php endif; ?>
-                            <div class="card-body d-flex flex-column">
-                                <h3 class="card-title h4">
-                                    <a class="stretched-link text-light" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
-                                </h3>
-                                <div class="card-text text-muted small mb-3">
-                                    <?php echo esc_html( get_the_date() ); ?>
-                                </div>
-                                <div class="card-text">
-                                    <?php the_excerpt(); ?>
+                                <div class="card-text entry-content">
+                                    <?php the_content(); ?>
                                 </div>
                             </div>
                         </article>
+                    <?php endif; ?>
+                <?php endwhile; ?>
+            <?php endif; ?>
+
+            <?php if ( $movie_query instanceof WP_Query && $movie_query->have_posts() ) : ?>
+                <section class="mb-5">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h2 class="h4 fw-semibold mb-0"><?php esc_html_e( 'Nejnovější filmy', 'tmdb-theme' ); ?></h2>
+                        <?php if ( '' !== $movie_archive ) : ?>
+                            <a class="link-primary" href="<?php echo esc_url( $movie_archive ); ?>"><?php esc_html_e( 'Zobrazit vše', 'tmdb-theme' ); ?></a>
+                        <?php endif; ?>
                     </div>
-                    <?php
-                endwhile;
-                wp_reset_postdata();
-            else :
-                ?>
-                <div class="col-12">
-                    <div class="alert alert-info mb-0">
-                        <?php esc_html_e( 'Zatím nebyly publikovány žádné články.', 'tmdb-theme' ); ?>
-                    </div>
+                    <ul class="list-group list-group-flush movie-list">
+                        <?php
+                        while ( $movie_query->have_posts() ) :
+                            $movie_query->the_post();
+
+                            $post_id         = get_the_ID();
+                            $release_date    = '';
+                            $release_raw     = (string) get_post_meta( $post_id, 'TMDB_release_date', true );
+                            $vote_average    = (float) get_post_meta( $post_id, 'TMDB_vote_average', true );
+                            $genres          = get_the_terms( $post_id, TMDB_Taxonomies::GENRE );
+
+                            if ( '' !== $release_raw ) {
+                                $timestamp = strtotime( $release_raw );
+
+                                if ( false !== $timestamp ) {
+                                    $release_date = wp_date( get_option( 'date_format' ), $timestamp );
+                                } else {
+                                    $release_date = $release_raw;
+                                }
+                            }
+
+                            $genre_names = array();
+
+                            if ( $genres && ! is_wp_error( $genres ) ) {
+                                foreach ( $genres as $genre ) {
+                                    if ( $genre instanceof WP_Term ) {
+                                        $genre_names[] = $genre->name;
+                                    }
+                                }
+                            }
+                            ?>
+                            <li class="list-group-item movie-list-item">
+                                <div class="d-flex gap-3 align-items-start">
+                                    <?php if ( has_post_thumbnail() ) : ?>
+                                        <div class="movie-list-poster rounded overflow-hidden flex-shrink-0">
+                                            <?php the_post_thumbnail( 'medium', array( 'class' => 'img-fluid object-fit-cover' ) ); ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="flex-grow-1 position-relative">
+                                        <h3 class="h5 mb-1">
+                                            <a class="stretched-link text-reset text-decoration-none" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                                        </h3>
+                                        <div class="small text-muted mb-1">
+                                            <?php if ( '' !== $release_date ) : ?>
+                                                <span><?php echo esc_html( $release_date ); ?></span>
+                                            <?php endif; ?>
+                                            <?php if ( $vote_average > 0 ) : ?>
+                                                <span class="ms-2">&#9733; <?php echo esc_html( number_format_i18n( $vote_average, 1 ) ); ?>/10</span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if ( ! empty( $genre_names ) ) : ?>
+                                            <div class="small text-muted">
+                                                <?php echo esc_html( implode( ', ', $genre_names ) ); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </li>
+                            <?php
+                        endwhile;
+                        wp_reset_postdata();
+                        ?>
+                    </ul>
+                </section>
+            <?php elseif ( post_type_exists( 'movie' ) ) : ?>
+                <div class="alert alert-info mb-5">
+                    <?php esc_html_e( 'Zatím nebyly přidány žádné filmy.', 'tmdb-theme' ); ?>
                 </div>
-                <?php
-            endif;
-            ?>
+            <?php endif; ?>
+
+            <?php if ( $blog_query->have_posts() ) : ?>
+                <section class="mb-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h2 class="h4 fw-semibold mb-0"><?php esc_html_e( 'Aktuální články', 'tmdb-theme' ); ?></h2>
+                        <?php if ( '' !== $blog_link ) : ?>
+                            <a class="link-primary" href="<?php echo esc_url( $blog_link ); ?>"><?php esc_html_e( 'Blog', 'tmdb-theme' ); ?></a>
+                        <?php endif; ?>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        <?php
+                        while ( $blog_query->have_posts() ) :
+                            $blog_query->the_post();
+                            ?>
+                            <li class="list-group-item">
+                                <article id="post-<?php the_ID(); ?>" <?php post_class( 'd-flex flex-column flex-sm-row gap-3 align-items-sm-center' ); ?>>
+                                    <div class="flex-grow-1">
+                                        <h3 class="h5 mb-1">
+                                            <a class="stretched-link text-reset text-decoration-none" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                                        </h3>
+                                        <div class="small text-muted mb-2"><?php echo esc_html( get_the_date() ); ?></div>
+                                        <div class="mb-0 text-muted">
+                                            <?php the_excerpt(); ?>
+                                        </div>
+                                    </div>
+                                </article>
+                            </li>
+                            <?php
+                        endwhile;
+                        wp_reset_postdata();
+                        ?>
+                    </ul>
+                </section>
+            <?php else : ?>
+                <div class="alert alert-info">
+                    <?php esc_html_e( 'Žádné články zatím nejsou k dispozici.', 'tmdb-theme' ); ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        <div class="col-lg-4">
+            <?php get_sidebar(); ?>
         </div>
     </div>
-</section>
+</div>
 
 <?php
 get_footer();

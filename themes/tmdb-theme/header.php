@@ -15,11 +15,11 @@ if ( ! defined( 'ABSPATH' ) ) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php wp_head(); ?>
 </head>
-<body <?php body_class( 'd-flex flex-column min-vh-100 bg-dark text-light' ); ?>>
+<body <?php body_class( 'd-flex flex-column min-vh-100 bg-light text-body' ); ?>>
 <?php wp_body_open(); ?>
 <div id="page" class="site flex-grow-1 d-flex flex-column">
-    <header id="masthead" class="site-header py-3">
-        <nav class="navbar navbar-expand-lg navbar-dark">
+    <header id="masthead" class="site-header py-3 border-bottom">
+        <nav class="navbar navbar-expand-lg navbar-light bg-white">
             <div class="container">
                 <a class="navbar-brand d-flex align-items-center" href="<?php echo esc_url( home_url( '/' ) ); ?>">
                     <?php

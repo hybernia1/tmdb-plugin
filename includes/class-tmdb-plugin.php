@@ -267,27 +267,6 @@ class TMDB_Plugin {
             );
         }
 
-        $stylesheet_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css';
-
-        if ( ! file_exists( $stylesheet_path ) ) {
-            $stylesheet_path = null;
-        }
-
-        if ( null !== $stylesheet_path ) {
-            $dependencies = [ 'tmdb-theme-bootstrap' ];
-
-            if ( $has_theme_stylesheet ) {
-                $dependencies[] = 'tmdb-theme-style';
-            }
-
-            wp_enqueue_style(
-                'tmdb-plugin-single-movie',
-                plugin_dir_url( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css',
-                $dependencies,
-                (string) filemtime( plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css' )
-            );
-        }
-
         wp_enqueue_script(
             'tmdb-theme-bootstrap-bundle',
             'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js',

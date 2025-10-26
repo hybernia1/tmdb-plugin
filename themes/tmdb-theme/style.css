@@ -13,17 +13,17 @@ Text Domain: tmdb-theme
 /* Custom theme styles */
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-color: #0f172a;
-    color: #e2e8f0;
+    background-color: #f8fafc;
+    color: #0f172a;
 }
 
 a {
-    color: #38bdf8;
+    color: #0369a1;
 }
 
 a:hover,
 a:focus {
-    color: #0ea5e9;
+    color: #0c4a6e;
     text-decoration: none;
 }
 
@@ -32,32 +32,9 @@ a:focus {
     letter-spacing: 0.05em;
 }
 
-.tmdb-hero {
-    background: linear-gradient(135deg, rgba(14, 165, 233, 0.8), rgba(14, 116, 144, 0.8));
-    color: #f8fafc;
-    padding: 6rem 0;
-}
-
-.tmdb-hero.has-custom-bg {
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: cover;
-}
-
-.tmdb-hero h1 {
-    font-size: 3rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-}
-
-.tmdb-hero p {
-    font-size: 1.25rem;
-    max-width: 40rem;
-}
-
 .card {
-    background-color: #1e293b;
-    border: none;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 0.75rem;
 }
 
@@ -85,68 +62,161 @@ a:focus {
 }
 
 footer.site-footer {
-    background-color: #020617;
-    color: #94a3b8;
+    background-color: #ffffff;
+    color: #475569;
 }
 
 footer.site-footer a {
-    color: #38bdf8;
+    color: #0369a1;
 }
 
 footer.site-footer a:hover {
-    color: #0ea5e9;
+    color: #0c4a6e;
 }
 
 .widget-title {
-    color: #38bdf8;
+    color: #0f172a;
 }
 
 .pagination .page-link {
     background-color: transparent;
-    border-color: #38bdf8;
-    color: #38bdf8;
+    border-color: #0369a1;
+    color: #0369a1;
 }
 
 .pagination .page-link:hover {
-    background-color: #38bdf8;
-    color: #0f172a;
+    background-color: #0369a1;
+    color: #ffffff;
 }
 
 .pagination .active .page-link {
-    background-color: #38bdf8;
-    border-color: #38bdf8;
-    color: #0f172a;
+    background-color: #0c4a6e;
+    border-color: #0c4a6e;
+    color: #ffffff;
 }
 
 .comment-form textarea,
 .comment-form input[type="text"],
 .comment-form input[type="email"] {
-    background-color: #0f172a;
-    border-color: #1e293b;
-    color: #e2e8f0;
+    background-color: #ffffff;
+    border-color: #cbd5f5;
+    color: #0f172a;
 }
 
 .comment-form textarea:focus,
 .comment-form input[type="text"]:focus,
 .comment-form input[type="email"]:focus {
-    border-color: #38bdf8;
+    border-color: #0369a1;
     box-shadow: none;
 }
 
 .widget_search .search-field {
-    background-color: #0f172a;
-    border-color: #1e293b;
-    color: #e2e8f0;
+    background-color: #ffffff;
+    border-color: #cbd5f5;
+    color: #0f172a;
 }
 
 .widget_search .search-submit {
-    background-color: #38bdf8;
-    border-color: #38bdf8;
-    color: #0f172a;
+    background-color: #0369a1;
+    border-color: #0369a1;
+    color: #ffffff;
 }
 
 .widget_search .search-submit:hover {
-    background-color: #0ea5e9;
-    border-color: #0ea5e9;
+    background-color: #0c4a6e;
+    border-color: #0c4a6e;
+    color: #ffffff;
+}
+
+.movie-list .list-group-item {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+}
+
+.movie-list-item {
+    position: relative;
+}
+
+.movie-list-poster {
+    width: 92px;
+    height: 138px;
+}
+
+.movie-list-poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.nav-tabs .nav-link {
+    font-weight: 600;
+    color: #475569;
+}
+
+.nav-tabs .nav-link.active {
+    color: #0c4a6e;
+}
+
+.tmdb-summary-tile {
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 1rem;
+}
+
+.tmdb-summary-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+}
+
+.tmdb-summary-value {
+    font-weight: 600;
     color: #0f172a;
+}
+
+.tmdb-meta-tile {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 1rem;
+}
+
+.tmdb-website-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tmdb-website-item a {
+    text-decoration: none;
+}
+
+.tmdb-website-item a:hover,
+.tmdb-website-item a:focus {
+    text-decoration: underline;
+}
+
+.tmdb-gallery-item {
+    margin: 0;
+}
+
+.tmdb-gallery-item img {
+    display: block;
+}
+
+.tmdb-gallery-item figcaption {
+    margin-top: 0.5rem;
+}
+
+.avatar img {
+    display: block;
+}
+
+@media (max-width: 576px) {
+    .movie-list-poster {
+        width: 72px;
+        height: 108px;
+    }
 }

@@ -18,7 +18,7 @@ get_header();
             <?php if ( have_posts() ) : ?>
                 <?php if ( ! is_front_page() ) : ?>
                     <header class="mb-4">
-                        <h1 class="display-5 fw-bold text-light mb-0"><?php single_post_title(); ?></h1>
+                        <h1 class="display-5 fw-bold mb-0"><?php single_post_title(); ?></h1>
                     </header>
                 <?php endif; ?>
 
@@ -35,7 +35,7 @@ get_header();
 
                         <div class="card-body">
                             <h2 class="card-title h3">
-                                <a class="stretched-link text-light" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                                <a class="stretched-link text-reset text-decoration-none" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
                             </h2>
 
                             <div class="card-text text-muted small mb-3">
