@@ -15,15 +15,12 @@ Text Domain: tmdb-theme
  * No additional custom styling is provided.
  */
 
-.tmdb-score-box {
-    width: 140px;
-    min-height: 140px;
-    aspect-ratio: 1 / 1;
+.tmdb-rating-card .progress {
+    height: 6px;
+    border-radius: 999px;
+    overflow: hidden;
 }
 
-@media (max-width: 767.98px) {
-    .tmdb-score-box {
-        width: 120px;
-        min-height: 120px;
-    }
+.tmdb-rating-card .progress-bar {
+    border-radius: 999px;
 }

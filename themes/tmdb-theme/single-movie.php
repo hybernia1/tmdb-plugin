@@ -208,6 +208,38 @@ get_header();
             ];
         }
 
+        $hero_inline_keys = [ 'release_date', 'runtime', 'status', 'origin_countries' ];
+
+        $hero_inline_meta = array_values(
+            array_filter(
+                $meta_rows,
+                static function ( $row ) use ( $hero_inline_keys ) {
+                    return in_array( $row['key'], $hero_inline_keys, true );
+                }
+            )
+        );
+
+        $hero_meta_keys = [
+            'original_title',
+            'release_date',
+            'runtime',
+            'status',
+            'origin_countries',
+            'spoken_languages',
+            'primary_language',
+            'collection',
+        ];
+
+        $hero_grid_meta = array_values(
+            array_filter(
+                $meta_rows,
+                static function ( $row ) use ( $hero_meta_keys, $hero_inline_keys ) {
+                    return in_array( $row['key'], $hero_meta_keys, true )
+                        && ! in_array( $row['key'], $hero_inline_keys, true );
+                }
+            )
+        );
+
         $hero_genres = [];
 
         $genre_terms = get_the_terms( $post_id, TMDB_Taxonomies::GENRE );
@@ -595,16 +627,6 @@ get_header();
             }
         }
 
-        $genre_names = [];
-
-        if ( ! empty( $hero_genres ) ) {
-            foreach ( $hero_genres as $genre ) {
-                if ( $genre instanceof \WP_Term ) {
-                    $genre_names[] = $genre->name;
-                }
-            }
-        }
-
         $rating_percentage = 0;
 
         if ( $vote_average > 0 ) {
@@ -613,100 +635,196 @@ get_header();
     ?>
     <article id="post-<?php the_ID(); ?>" <?php post_class( 'card mb-4' ); ?>>
         <div class="card-body">
-            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-4">
-                <div>
-                    <h1 class="h2 mb-1">
-                        <?php the_title(); ?>
-                        <?php if ( '' !== $release_year ) : ?>
-                            <span class="text-muted fw-normal">(<?php echo esc_html( $release_year ); ?>)</span>
-                        <?php endif; ?>
-                    </h1>
-                    <?php if ( ! empty( $genre_names ) ) : ?>
-                        <div class="text-muted">
-                            <?php echo esc_html( implode( ', ', $genre_names ) ); ?>
-                        </div>
-                    <?php endif; ?>
-                </div>
-                <?php if ( $rating_percentage > 0 ) : ?>
-                    <div class="tmdb-score-box border rounded d-flex flex-column justify-content-center align-items-center text-center">
-                        <span class="fs-2 fw-bold mb-1"><?php echo esc_html( $rating_percentage ); ?>%</span>
-                        <?php if ( $vote_count > 0 ) : ?>
-                            <span class="text-muted small"><?php printf( esc_html__( '%s ratings', 'tmdb-theme' ), number_format_i18n( $vote_count ) ); ?></span>
-                        <?php else : ?>
-                            <span class="text-muted small"><?php esc_html_e( 'No ratings yet', 'tmdb-theme' ); ?></span>
-                        <?php endif; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <?php if ( '' !== $tagline ) : ?>
-                <p class="text-muted mb-4"><?php echo esc_html( $tagline ); ?></p>
-            <?php endif; ?>
-
-            <div class="row g-4 align-items-start">
-                <div class="col-md-4">
+            <div class="row gy-4">
+                <div class="col-lg-3">
                     <?php if ( has_post_thumbnail() ) : ?>
-                        <?php the_post_thumbnail( 'large', [ 'class' => 'img-fluid rounded' ] ); ?>
+                        <?php the_post_thumbnail( 'large', [ 'class' => 'img-fluid rounded w-100' ] ); ?>
                     <?php else : ?>
                         <div class="border rounded p-4 text-center text-muted">
                             <?php esc_html_e( 'No poster available', 'tmdb-theme' ); ?>
                         </div>
                     <?php endif; ?>
+
+                    <?php if ( '' !== $primary_official_url || ( ! empty( $trailer ) && '' !== $trailer['watch_url'] ) ) : ?>
+                        <div class="d-grid gap-2 mt-3">
+                            <?php if ( '' !== $primary_official_url ) : ?>
+                                <a
+                                    class="btn btn-outline-primary"
+                                    href="<?php echo esc_url( $primary_official_url ); ?>"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
+                                </a>
+                            <?php endif; ?>
+
+                            <?php if ( ! empty( $trailer ) && '' !== $trailer['watch_url'] ) : ?>
+                                <a
+                                    class="btn btn-outline-secondary"
+                                    href="<?php echo esc_url( $trailer['watch_url'] ); ?>"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <?php esc_html_e( 'Watch trailer', 'tmdb-theme' ); ?>
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="tmdb-rating-card border rounded p-4 text-center mt-4">
+                        <div class="text-uppercase small text-muted mb-2"><?php esc_html_e( 'TMDB rating', 'tmdb-theme' ); ?></div>
+                        <div class="display-5 fw-bold mb-1"><?php echo esc_html( $vote_average > 0 ? number_format_i18n( $vote_average, 1 ) : '–' ); ?></div>
+                        <div class="text-muted small mb-3">
+                            <?php if ( $rating_percentage > 0 ) : ?>
+                                <?php printf( esc_html__( '%s%% user score', 'tmdb-theme' ), number_format_i18n( $rating_percentage ) ); ?>
+                            <?php else : ?>
+                                <?php esc_html_e( 'No ratings yet', 'tmdb-theme' ); ?>
+                            <?php endif; ?>
+                        </div>
+                        <div class="progress">
+                            <div
+                                class="progress-bar bg-success"
+                                role="progressbar"
+                                style="width: <?php echo esc_attr( $rating_percentage ); ?>%;"
+                                aria-valuenow="<?php echo esc_attr( $rating_percentage ); ?>"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                            ></div>
+                        </div>
+                        <?php if ( '' !== $rating ) : ?>
+                            <div class="small text-muted mt-3"><?php echo esc_html( $rating ); ?></div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div class="col-md-8">
+                <div class="col-lg-9">
+                    <header class="border-bottom pb-3 mb-4">
+                        <h1 class="h2 mb-2">
+                            <?php the_title(); ?>
+                            <?php if ( '' !== $release_year ) : ?>
+                                <span class="text-muted fw-normal">(<?php echo esc_html( $release_year ); ?>)</span>
+                            <?php endif; ?>
+                        </h1>
+
+                        <?php if ( '' !== $tagline ) : ?>
+                            <p class="lead text-muted mb-3"><?php echo esc_html( $tagline ); ?></p>
+                        <?php endif; ?>
+
+                        <?php if ( ! empty( $hero_genres ) ) : ?>
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                <?php
+                                foreach ( $hero_genres as $genre ) {
+                                    if ( ! $genre instanceof \WP_Term ) {
+                                        continue;
+                                    }
+
+                                    $genre_link = get_term_link( $genre );
+
+                                    if ( is_wp_error( $genre_link ) ) {
+                                        $genre_link = '';
+                                    }
+
+                                    if ( '' !== $genre_link ) {
+                                        echo '<a class="badge text-bg-light border" href="' . esc_url( $genre_link ) . '">' . esc_html( $genre->name ) . '</a>';
+                                    } else {
+                                        echo '<span class="badge text-bg-light border">' . esc_html( $genre->name ) . '</span>';
+                                    }
+                                }
+                                ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ( ! empty( $hero_inline_meta ) ) : ?>
+                            <ul class="list-inline text-muted small mb-0">
+                                <?php foreach ( $hero_inline_meta as $fact ) : ?>
+                                    <li class="list-inline-item me-3">
+                                        <span class="fw-semibold text-uppercase me-1"><?php echo esc_html( $fact['label'] ); ?>:</span>
+                                        <span><?php echo esc_html( $fact['value'] ); ?></span>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </header>
+
+                    <?php if ( ! empty( $hero_grid_meta ) ) : ?>
+                        <div class="mb-4">
+                            <h2 class="h6 text-uppercase text-muted mb-3"><?php esc_html_e( 'Key facts', 'tmdb-theme' ); ?></h2>
+                            <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3">
+                                <?php foreach ( $hero_grid_meta as $fact ) : ?>
+                                    <div class="col">
+                                        <div class="bg-light border rounded p-3 h-100">
+                                            <div class="text-muted text-uppercase small mb-1"><?php echo esc_html( $fact['label'] ); ?></div>
+                                            <div class="fw-semibold"><?php echo esc_html( $fact['value'] ); ?></div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
                     <?php if ( ! empty( $director_list ) ) : ?>
-                        <p class="mb-3">
-                            <span class="fw-semibold me-2"><?php esc_html_e( 'Režie:', 'tmdb-theme' ); ?></span>
-                            <?php
-                            $director_links = [];
+                        <div class="mb-3">
+                            <h2 class="h6 text-uppercase text-muted mb-2"><?php esc_html_e( 'Directors', 'tmdb-theme' ); ?></h2>
+                            <p class="mb-0">
+                                <?php
+                                $director_links = [];
 
-                            foreach ( $director_list as $director ) {
-                                if ( '' === $director['name'] ) {
-                                    continue;
+                                foreach ( $director_list as $director ) {
+                                    if ( '' === $director['name'] ) {
+                                        continue;
+                                    }
+
+                                    if ( '' !== $director['term_link'] ) {
+                                        $director_links[] = sprintf(
+                                            '<a href="%1$s">%2$s</a>',
+                                            esc_url( $director['term_link'] ),
+                                            esc_html( $director['name'] )
+                                        );
+                                    } else {
+                                        $director_links[] = esc_html( $director['name'] );
+                                    }
                                 }
 
-                                if ( '' !== $director['term_link'] ) {
-                                    $director_links[] = sprintf(
-                                        '<a href="%1$s">%2$s</a>',
-                                        esc_url( $director['term_link'] ),
-                                        esc_html( $director['name'] )
-                                    );
-                                } else {
-                                    $director_links[] = esc_html( $director['name'] );
-                                }
-                            }
-
-                            echo wp_kses_post( implode( ', ', $director_links ) );
-                            ?>
-                        </p>
+                                echo wp_kses_post( implode( ', ', $director_links ) );
+                                ?>
+                            </p>
+                        </div>
                     <?php endif; ?>
 
                     <?php if ( ! empty( $cast_list ) ) : ?>
-                        <p class="mb-0">
-                            <span class="fw-semibold me-2"><?php esc_html_e( 'Hlavní herci:', 'tmdb-theme' ); ?></span>
-                            <?php
-                            $main_cast  = array_slice( $cast_list, 0, 5 );
-                            $cast_links = [];
+                        <div class="mb-3">
+                            <h2 class="h6 text-uppercase text-muted mb-2"><?php esc_html_e( 'Main cast', 'tmdb-theme' ); ?></h2>
+                            <p class="mb-0">
+                                <?php
+                                $main_cast  = array_slice( $cast_list, 0, 5 );
+                                $cast_links = [];
 
-                            foreach ( $main_cast as $cast_member ) {
-                                if ( '' === $cast_member['name'] ) {
-                                    continue;
+                                foreach ( $main_cast as $cast_member ) {
+                                    if ( '' === $cast_member['name'] ) {
+                                        continue;
+                                    }
+
+                                    if ( '' !== $cast_member['term_link'] ) {
+                                        $cast_links[] = sprintf(
+                                            '<a href="%1$s">%2$s</a>',
+                                            esc_url( $cast_member['term_link'] ),
+                                            esc_html( $cast_member['name'] )
+                                        );
+                                    } else {
+                                        $cast_links[] = esc_html( $cast_member['name'] );
+                                    }
                                 }
 
-                                if ( '' !== $cast_member['term_link'] ) {
-                                    $cast_links[] = sprintf(
-                                        '<a href="%1$s">%2$s</a>',
-                                        esc_url( $cast_member['term_link'] ),
-                                        esc_html( $cast_member['name'] )
-                                    );
-                                } else {
-                                    $cast_links[] = esc_html( $cast_member['name'] );
-                                }
-                            }
+                                echo wp_kses_post( implode( ', ', $cast_links ) );
+                                ?>
+                            </p>
+                        </div>
+                    <?php endif; ?>
 
-                            echo wp_kses_post( implode( ', ', $cast_links ) );
-                            ?>
-                        </p>
+                    <?php if ( ! empty( $alternative_titles ) ) : ?>
+                        <div class="mt-4">
+                            <h2 class="h6 text-uppercase text-muted mb-2"><?php esc_html_e( 'Also known as', 'tmdb-theme' ); ?></h2>
+                            <p class="mb-0"><?php echo esc_html( implode( ', ', $alternative_titles ) ); ?></p>
+                        </div>
                     <?php endif; ?>
                 </div>
             </div>
