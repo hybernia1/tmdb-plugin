@@ -140,6 +140,7 @@ get_header();
 
         if ( '' !== $original_title && $original_title !== get_the_title() ) {
             $meta_rows[] = [
+                'key'   => 'original_title',
                 'label' => __( 'Original title', 'tmdb-plugin' ),
                 'value' => $original_title,
             ];
@@ -147,6 +148,7 @@ get_header();
 
         if ( '' !== $release_date ) {
             $meta_rows[] = [
+                'key'   => 'release_date',
                 'label' => __( 'Release date', 'tmdb-plugin' ),
                 'value' => $release_date,
             ];
@@ -154,6 +156,7 @@ get_header();
 
         if ( '' !== $runtime ) {
             $meta_rows[] = [
+                'key'   => 'runtime',
                 'label' => __( 'Runtime', 'tmdb-plugin' ),
                 'value' => $runtime,
             ];
@@ -161,6 +164,7 @@ get_header();
 
         if ( '' !== $status ) {
             $meta_rows[] = [
+                'key'   => 'status',
                 'label' => __( 'Status', 'tmdb-plugin' ),
                 'value' => $status,
             ];
@@ -168,6 +172,7 @@ get_header();
 
         if ( '' !== $rating ) {
             $meta_rows[] = [
+                'key'   => 'rating',
                 'label' => __( 'Rating', 'tmdb-plugin' ),
                 'value' => $rating,
             ];
@@ -175,6 +180,7 @@ get_header();
 
         if ( '' !== $origin_display ) {
             $meta_rows[] = [
+                'key'   => 'origin_countries',
                 'label' => __( 'Origin countries', 'tmdb-plugin' ),
                 'value' => $origin_display,
             ];
@@ -182,6 +188,7 @@ get_header();
 
         if ( '' !== $language_display ) {
             $meta_rows[] = [
+                'key'   => 'spoken_languages',
                 'label' => __( 'Spoken languages', 'tmdb-plugin' ),
                 'value' => $language_display,
             ];
@@ -189,6 +196,7 @@ get_header();
 
         if ( '' !== $primary_language ) {
             $meta_rows[] = [
+                'key'   => 'primary_language',
                 'label' => __( 'Primary language', 'tmdb-plugin' ),
                 'value' => strtoupper( sanitize_text_field( $primary_language ) ),
             ];
@@ -196,9 +204,23 @@ get_header();
 
         if ( is_array( $collection ) && ! empty( $collection['name'] ) ) {
             $meta_rows[] = [
+                'key'   => 'collection',
                 'label' => __( 'Collection', 'tmdb-plugin' ),
                 'value' => sanitize_text_field( (string) $collection['name'] ),
             ];
+        }
+
+        $hero_meta_rows = array_values(
+            array_filter(
+                $meta_rows,
+                static function ( $row ) {
+                    return isset( $row['key'] ) && 'rating' !== $row['key'];
+                }
+            )
+        );
+
+        if ( count( $hero_meta_rows ) > 6 ) {
+            $hero_meta_rows = array_slice( $hero_meta_rows, 0, 6 );
         }
 
         $taxonomy_sections = [];
@@ -206,11 +228,24 @@ get_header();
         $director_terms = get_the_terms( $post_id, TMDB_Taxonomies::DIRECTOR );
         $genre_terms    = get_the_terms( $post_id, TMDB_Taxonomies::GENRE );
 
+        $hero_genres = [];
+
         if ( $genre_terms && ! is_wp_error( $genre_terms ) ) {
-            $taxonomy_sections[] = [
-                'label' => __( 'Genres', 'tmdb-plugin' ),
-                'terms' => $genre_terms,
-            ];
+            $hero_genres = array_values(
+                array_filter(
+                    $genre_terms,
+                    static function ( $term ) {
+                        return $term instanceof \WP_Term;
+                    }
+                )
+            );
+
+            if ( ! empty( $hero_genres ) ) {
+                $taxonomy_sections[] = [
+                    'label' => __( 'Genres', 'tmdb-plugin' ),
+                    'terms' => $hero_genres,
+                ];
+            }
         }
 
         $keyword_terms = get_the_terms( $post_id, TMDB_Taxonomies::KEYWORD );
@@ -595,35 +630,38 @@ get_header();
         $has_gallery  = ! empty( $gallery_items );
         $has_trailer  = ! empty( $trailer );
 
-        $summary_badges = [];
+        $vote_percent         = null;
+        $vote_percent_display = '';
 
-        if ( '' !== $release_date ) {
-            $summary_badges[] = [
-                'label' => __( 'Release', 'tmdb-theme' ),
-                'value' => $release_date,
-            ];
+        if ( $vote_average > 0 ) {
+            $vote_percent         = round( $vote_average * 10 );
+            $vote_percent_display = sprintf(
+                /* translators: %s is the user score in percent. */
+                __( '%s%%', 'tmdb-theme' ),
+                number_format_i18n( $vote_percent )
+            );
         }
 
-        if ( '' !== $runtime ) {
-            $summary_badges[] = [
-                'label' => __( 'Runtime', 'tmdb-theme' ),
-                'value' => $runtime,
-            ];
+        $vote_count_display = '';
+
+        if ( $vote_count > 0 ) {
+            $vote_count_display = sprintf(
+                /* translators: %s is the number of votes. */
+                _n( '%s vote', '%s votes', $vote_count, 'tmdb-theme' ),
+                number_format_i18n( $vote_count )
+            );
         }
 
-        if ( '' !== $status ) {
-            $summary_badges[] = [
-                'label' => __( 'Status', 'tmdb-theme' ),
-                'value' => $status,
-            ];
+        $has_external_ids     = ! empty( $external_ids );
+        $primary_official_url = '';
+
+        if ( '' !== $homepage ) {
+            $primary_official_url = $homepage;
+        } elseif ( is_array( $primary_website ) && ! empty( $primary_website['url'] ) ) {
+            $primary_official_url = (string) $primary_website['url'];
         }
 
-        if ( '' !== $rating ) {
-            $summary_badges[] = [
-                'label' => __( 'Rating', 'tmdb-theme' ),
-                'value' => $rating,
-            ];
-        }
+        $has_hero_side = ( $vote_average > 0 ) || $has_external_ids;
 
         $tabs = [
             'overview' => __( 'Overview', 'tmdb-theme' ),
@@ -642,83 +680,150 @@ get_header();
         }
         ?>
         <article id="post-<?php the_ID(); ?>" <?php post_class( 'movie-detail card border-0 shadow-sm' ); ?>>
-            <div class="card-body p-4 p-lg-5">
-                <header class="mb-4 text-center text-lg-start">
-                    <h1 class="h2 fw-semibold mb-2"><?php the_title(); ?></h1>
-                    <?php if ( '' !== $tagline ) : ?>
-                        <p class="lead text-muted mb-0"><?php echo esc_html( $tagline ); ?></p>
-                    <?php endif; ?>
-                </header>
-
-                <div class="row g-4 align-items-start mb-4">
-                    <?php if ( has_post_thumbnail() ) : ?>
-                        <div class="col-lg-4 col-xl-3">
-                            <div class="ratio ratio-2x3 rounded overflow-hidden shadow-sm">
-                                <?php the_post_thumbnail( 'large', [ 'class' => 'w-100 h-100 object-fit-cover' ] ); ?>
-                            </div>
-                        </div>
-                    <?php endif; ?>
-                    <div class="col">
-                        <?php if ( $has_trailer ) : ?>
-                            <section class="mb-4">
-                                <div class="card border-0 shadow-sm overflow-hidden">
-                                    <?php if ( '' !== $trailer['embed_url'] ) : ?>
-                                        <div class="ratio ratio-16x9">
-                                            <iframe src="<?php echo esc_url( $trailer['embed_url'] ); ?>" title="<?php echo esc_attr( $trailer['name'] ); ?>" allowfullscreen loading="lazy"></iframe>
-                                        </div>
-                                    <?php elseif ( '' !== $trailer['watch_url'] ) : ?>
-                                        <div class="card-body">
-                                            <a class="btn btn-outline-primary" href="<?php echo esc_url( $trailer['watch_url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Watch trailer', 'tmdb-plugin' ); ?></a>
-                                        </div>
-                                    <?php endif; ?>
-                                    <div class="card-body">
-                                        <?php if ( '' !== $trailer['name'] ) : ?>
-                                            <h2 class="h5 fw-semibold mb-1"><?php echo esc_html( $trailer['name'] ); ?></h2>
-                                        <?php endif; ?>
-                                        <div class="d-flex flex-wrap gap-2 small text-muted">
-                                            <?php if ( '' !== $trailer['type'] ) : ?>
-                                                <span class="badge bg-primary-subtle text-primary-emphasis"><?php echo esc_html( $trailer['type'] ); ?></span>
-                                            <?php endif; ?>
-                                            <?php if ( '' !== $trailer['site'] ) : ?>
-                                                <span class="badge bg-secondary-subtle text-secondary"><?php echo esc_html( $trailer['site'] ); ?></span>
-                                            <?php endif; ?>
-                                            <?php if ( ! empty( $trailer['official'] ) ) : ?>
-                                                <span class="badge bg-success-subtle text-success"><?php esc_html_e( 'Official', 'tmdb-plugin' ); ?></span>
-                                            <?php endif; ?>
-                                            <?php if ( '' !== $trailer['published_at'] ) : ?>
-                                                <span><?php echo esc_html( $trailer['published_at'] ); ?></span>
-                                            <?php endif; ?>
-                                        </div>
+            <section class="tmdb-hero p-4 p-lg-5">
+                <div class="row g-4 align-items-start">
+                    <div class="<?php echo $has_hero_side ? 'col-12 col-lg-8' : 'col-12'; ?>">
+                        <div class="row g-4 align-items-start">
+                            <?php if ( has_post_thumbnail() ) : ?>
+                                <div class="col-md-5 col-lg-6 col-xl-5">
+                                    <div class="tmdb-hero-poster ratio ratio-2x3 rounded overflow-hidden shadow-sm">
+                                        <?php the_post_thumbnail( 'large', [ 'class' => 'tmdb-hero-poster-img w-100 h-100 object-fit-cover' ] ); ?>
                                     </div>
                                 </div>
-                            </section>
-                        <?php endif; ?>
+                            <?php endif; ?>
+                            <div class="col">
+                                <header class="tmdb-hero-header mb-4">
+                                    <h1 class="h2 fw-semibold mb-2"><?php the_title(); ?></h1>
+                                    <?php if ( '' !== $tagline ) : ?>
+                                        <p class="lead text-muted mb-0"><?php echo esc_html( $tagline ); ?></p>
+                                    <?php endif; ?>
+                                </header>
 
-                        <?php if ( ! empty( $summary_badges ) ) : ?>
-                            <div class="row g-3 mb-3">
-                                <?php foreach ( $summary_badges as $badge ) : ?>
-                                    <div class="col-sm-6 col-xl-3">
-                                        <div class="tmdb-summary-tile">
-                                            <span class="tmdb-summary-label"><?php echo esc_html( $badge['label'] ); ?></span>
-                                            <span class="tmdb-summary-value"><?php echo esc_html( $badge['value'] ); ?></span>
+                                <?php if ( ! empty( $hero_genres ) ) : ?>
+                                    <div class="tmdb-hero-genres d-flex flex-wrap gap-2 mb-4">
+                                        <?php foreach ( $hero_genres as $genre ) :
+                                            if ( ! $genre instanceof \WP_Term ) {
+                                                continue;
+                                            }
+
+                                            $genre_link = get_term_link( $genre );
+
+                                            if ( is_wp_error( $genre_link ) ) {
+                                                $genre_link = '';
+                                            }
+                                            ?>
+                                            <?php if ( '' !== $genre_link ) : ?>
+                                                <a class="badge tmdb-genre-badge" href="<?php echo esc_url( $genre_link ); ?>"><?php echo esc_html( $genre->name ); ?></a>
+                                            <?php else : ?>
+                                                <span class="badge tmdb-genre-badge"><?php echo esc_html( $genre->name ); ?></span>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if ( ! empty( $hero_meta_rows ) ) : ?>
+                                    <dl class="tmdb-hero-meta mb-4">
+                                        <?php foreach ( $hero_meta_rows as $meta_row ) : ?>
+                                            <div class="tmdb-hero-meta-item">
+                                                <dt class="tmdb-hero-meta-label"><?php echo esc_html( $meta_row['label'] ); ?></dt>
+                                                <dd class="tmdb-hero-meta-value mb-0"><?php echo esc_html( $meta_row['value'] ); ?></dd>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </dl>
+                                <?php endif; ?>
+
+                                <?php if ( '' !== $primary_official_url ) : ?>
+                                    <div class="mb-4">
+                                        <a class="btn btn-outline-primary" href="<?php echo esc_url( $primary_official_url ); ?>" target="_blank" rel="noopener noreferrer">
+                                            <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if ( $has_trailer ) : ?>
+                                    <div class="tmdb-hero-trailer card border-0 shadow-sm overflow-hidden">
+                                        <?php if ( '' !== $trailer['embed_url'] ) : ?>
+                                            <div class="ratio ratio-16x9">
+                                                <iframe src="<?php echo esc_url( $trailer['embed_url'] ); ?>" title="<?php echo esc_attr( $trailer['name'] ); ?>" allowfullscreen loading="lazy"></iframe>
+                                            </div>
+                                        <?php elseif ( '' !== $trailer['watch_url'] ) : ?>
+                                            <div class="card-body">
+                                                <a class="btn btn-outline-primary" href="<?php echo esc_url( $trailer['watch_url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Watch trailer', 'tmdb-plugin' ); ?></a>
+                                            </div>
+                                        <?php endif; ?>
+                                        <div class="card-body">
+                                            <?php if ( '' !== $trailer['name'] ) : ?>
+                                                <h2 class="h5 fw-semibold mb-1"><?php echo esc_html( $trailer['name'] ); ?></h2>
+                                            <?php endif; ?>
+                                            <div class="d-flex flex-wrap gap-2 small text-muted">
+                                                <?php if ( '' !== $trailer['type'] ) : ?>
+                                                    <span class="badge bg-primary-subtle text-primary-emphasis"><?php echo esc_html( $trailer['type'] ); ?></span>
+                                                <?php endif; ?>
+                                                <?php if ( '' !== $trailer['site'] ) : ?>
+                                                    <span class="badge bg-secondary-subtle text-secondary"><?php echo esc_html( $trailer['site'] ); ?></span>
+                                                <?php endif; ?>
+                                                <?php if ( ! empty( $trailer['official'] ) ) : ?>
+                                                    <span class="badge bg-success-subtle text-success"><?php esc_html_e( 'Official', 'tmdb-plugin' ); ?></span>
+                                                <?php endif; ?>
+                                                <?php if ( '' !== $trailer['published_at'] ) : ?>
+                                                    <span><?php echo esc_html( $trailer['published_at'] ); ?></span>
+                                                <?php endif; ?>
+                                            </div>
                                         </div>
                                     </div>
-                                <?php endforeach; ?>
+                                <?php endif; ?>
                             </div>
-                        <?php endif; ?>
-
-                        <?php if ( '' !== $homepage ) : ?>
-                            <a class="btn btn-outline-primary" href="<?php echo esc_url( $homepage ); ?>" target="_blank" rel="noopener noreferrer">
-                                <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
-                            </a>
-                        <?php elseif ( is_array( $primary_website ) && ! empty( $primary_website['url'] ) ) : ?>
-                            <a class="btn btn-outline-primary" href="<?php echo esc_url( (string) $primary_website['url'] ); ?>" target="_blank" rel="noopener noreferrer">
-                                <?php esc_html_e( 'Official website', 'tmdb-plugin' ); ?>
-                            </a>
-                        <?php endif; ?>
+                        </div>
                     </div>
-                </div>
 
+                    <?php if ( $has_hero_side ) : ?>
+                        <div class="col-lg-4">
+                            <aside class="tmdb-hero-side h-100 d-flex flex-column gap-4">
+                                <?php if ( $vote_average > 0 ) : ?>
+                                    <div class="tmdb-score-card text-center">
+                                        <div class="tmdb-score-circle mx-auto">
+                                            <span class="tmdb-score-value"><?php echo esc_html( $vote_percent_display ); ?></span>
+                                        </div>
+                                        <p class="tmdb-score-subtitle text-uppercase mb-2"><?php esc_html_e( 'User score', 'tmdb-theme' ); ?></p>
+                                        <p class="tmdb-score-average mb-1"><?php printf( esc_html__( '%s out of 10', 'tmdb-theme' ), number_format_i18n( $vote_average, 1 ) ); ?></p>
+                                        <?php if ( '' !== $vote_count_display ) : ?>
+                                            <p class="tmdb-score-count mb-0"><?php echo esc_html( $vote_count_display ); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php else : ?>
+                                    <div class="tmdb-score-card tmdb-score-card--empty text-center">
+                                        <p class="tmdb-score-subtitle text-uppercase mb-2"><?php esc_html_e( 'User score', 'tmdb-theme' ); ?></p>
+                                        <p class="tmdb-score-average mb-0"><?php esc_html_e( 'Not rated yet', 'tmdb-theme' ); ?></p>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if ( $has_external_ids ) : ?>
+                                    <div class="tmdb-external-links">
+                                        <h2 class="tmdb-external-heading h6 text-uppercase fw-semibold mb-3"><?php esc_html_e( 'External IDs', 'tmdb-theme' ); ?></h2>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <?php foreach ( $external_ids as $external ) : ?>
+                                                <?php if ( '' !== $external['link'] ) : ?>
+                                                    <a class="badge tmdb-external-badge" href="<?php echo esc_url( $external['link'] ); ?>" target="_blank" rel="noopener noreferrer">
+                                                        <span class="tmdb-external-label"><?php echo esc_html( $external['label'] ); ?></span>
+                                                        <span class="tmdb-external-value"><?php echo esc_html( $external['value'] ); ?></span>
+                                                    </a>
+                                                <?php else : ?>
+                                                    <span class="badge tmdb-external-badge">
+                                                        <span class="tmdb-external-label"><?php echo esc_html( $external['label'] ); ?></span>
+                                                        <span class="tmdb-external-value"><?php echo esc_html( $external['value'] ); ?></span>
+                                                    </span>
+                                                <?php endif; ?>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </aside>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </section>
+
+            <div class="tmdb-content p-4 p-lg-5">
                 <ul class="nav nav-tabs" id="movie-detail-tabs" role="tablist">
                     <?php
                     $index = 0;
