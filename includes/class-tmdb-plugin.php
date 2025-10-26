@@ -88,10 +88,16 @@ class TMDB_Plugin {
      * Returns the absolute path to a plugin template if it exists.
      */
     private function locate_plugin_template( string $type, string $name ): ?string {
-        $template_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/' . $type . '-' . $name . '.php';
+        $theme_template_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/tmdb-theme/' . $type . '-' . $name . '.php';
 
-        if ( file_exists( $template_path ) ) {
-            return $template_path;
+        if ( file_exists( $theme_template_path ) ) {
+            return $theme_template_path;
+        }
+
+        $legacy_template_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/' . $type . '-' . $name . '.php';
+
+        if ( file_exists( $legacy_template_path ) ) {
+            return $legacy_template_path;
         }
 
         return null;
@@ -105,17 +111,53 @@ class TMDB_Plugin {
             return;
         }
 
+        wp_enqueue_style(
+            'tmdb-theme-bootstrap',
+            'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
+            [],
+            '5.3.3'
+        );
+
+        $theme_stylesheet_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/tmdb-theme/style.css';
+
+        $has_theme_stylesheet = file_exists( $theme_stylesheet_path );
+
+        if ( $has_theme_stylesheet ) {
+            wp_enqueue_style(
+                'tmdb-theme-style',
+                plugin_dir_url( TMDB_PLUGIN_FILE ) . 'themes/tmdb-theme/style.css',
+                [ 'tmdb-theme-bootstrap' ],
+                (string) filemtime( $theme_stylesheet_path )
+            );
+        }
+
         $stylesheet_path = plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css';
 
         if ( ! file_exists( $stylesheet_path ) ) {
-            return;
+            $stylesheet_path = null;
         }
 
-        wp_enqueue_style(
-            'tmdb-plugin-single-movie',
-            plugin_dir_url( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css',
+        if ( null !== $stylesheet_path ) {
+            $dependencies = [ 'tmdb-theme-bootstrap' ];
+
+            if ( $has_theme_stylesheet ) {
+                $dependencies[] = 'tmdb-theme-style';
+            }
+
+            wp_enqueue_style(
+                'tmdb-plugin-single-movie',
+                plugin_dir_url( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css',
+                $dependencies,
+                (string) filemtime( plugin_dir_path( TMDB_PLUGIN_FILE ) . 'themes/assets/tmdb-single-movie.css' )
+            );
+        }
+
+        wp_enqueue_script(
+            'tmdb-theme-bootstrap-bundle',
+            'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js',
             [],
-            (string) filemtime( $stylesheet_path )
+            '5.3.3',
+            true
         );
     }
 }
