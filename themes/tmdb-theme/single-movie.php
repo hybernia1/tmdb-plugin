@@ -15,9 +15,11 @@ get_header();
 ?>
 
 <div class="container py-5">
-    <?php
-    while ( have_posts() ) :
-        the_post();
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <?php
+            while ( have_posts() ) :
+                the_post();
 
         $post_id            = get_the_ID();
         $tagline            = (string) get_post_meta( $post_id, 'TMDB_tagline', true );
@@ -642,7 +644,7 @@ get_header();
         <article id="post-<?php the_ID(); ?>" <?php post_class( 'movie-detail card border-0 shadow-sm' ); ?>>
             <div class="card-body p-4 p-lg-5">
                 <header class="mb-4 text-center text-lg-start">
-                    <h1 class="display-4 fw-bold mb-2"><?php the_title(); ?></h1>
+                    <h1 class="h2 fw-semibold mb-2"><?php the_title(); ?></h1>
                     <?php if ( '' !== $tagline ) : ?>
                         <p class="lead text-muted mb-0"><?php echo esc_html( $tagline ); ?></p>
                     <?php endif; ?>
@@ -980,6 +982,11 @@ get_header();
         }
     endwhile;
     ?>
+        </div>
+        <div class="col-lg-4">
+            <?php get_sidebar(); ?>
+        </div>
+    </div>
 </div>
 
 <?php
