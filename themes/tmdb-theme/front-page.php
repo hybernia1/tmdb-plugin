@@ -61,13 +61,13 @@ $blog_query = new WP_Query(
 
             <?php if ( $movie_query instanceof WP_Query && $movie_query->have_posts() ) : ?>
                 <section class="mb-5">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="section-heading d-flex align-items-center justify-content-between mb-3">
                         <h2 class="h4 fw-semibold mb-0"><?php esc_html_e( 'Nejnovější filmy', 'tmdb-theme' ); ?></h2>
                         <?php if ( '' !== $movie_archive ) : ?>
-                            <a class="link-primary" href="<?php echo esc_url( $movie_archive ); ?>"><?php esc_html_e( 'Zobrazit vše', 'tmdb-theme' ); ?></a>
+                            <a class="link-primary fw-semibold" href="<?php echo esc_url( $movie_archive ); ?>"><?php esc_html_e( 'Zobrazit vše', 'tmdb-theme' ); ?></a>
                         <?php endif; ?>
                     </div>
-                    <ul class="list-group list-group-flush movie-list">
+                    <div class="movie-grid row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xxl-4 g-4">
                         <?php
                         while ( $movie_query->have_posts() ) :
                             $movie_query->the_post();
@@ -98,38 +98,48 @@ $blog_query = new WP_Query(
                                 }
                             }
                             ?>
-                            <li class="list-group-item movie-list-item">
-                                <div class="d-flex gap-3 align-items-start">
+                            <div class="col">
+                                <article id="post-<?php the_ID(); ?>" <?php post_class( 'movie-card card h-100 border-0 shadow-sm' ); ?>>
                                     <?php if ( has_post_thumbnail() ) : ?>
-                                        <div class="movie-list-poster rounded overflow-hidden flex-shrink-0">
-                                            <?php the_post_thumbnail( 'medium', array( 'class' => 'img-fluid object-fit-cover' ) ); ?>
-                                        </div>
+                                        <a class="movie-card__poster ratio ratio-2x3" href="<?php the_permalink(); ?>">
+                                            <?php the_post_thumbnail( 'medium_large', array( 'class' => 'movie-card__image', 'loading' => 'lazy' ) ); ?>
+                                        </a>
+                                    <?php else : ?>
+                                        <a class="movie-card__poster ratio ratio-2x3 movie-card__poster--placeholder" href="<?php the_permalink(); ?>">
+                                            <span class="fw-semibold text-muted text-uppercase small"><?php esc_html_e( 'Bez plakátu', 'tmdb-theme' ); ?></span>
+                                        </a>
                                     <?php endif; ?>
-                                    <div class="flex-grow-1 position-relative">
-                                        <h3 class="h5 mb-1">
+                                    <div class="card-body">
+                                        <h3 class="h5 card-title mb-2">
                                             <a class="stretched-link text-reset text-decoration-none" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
                                         </h3>
-                                        <div class="small text-muted mb-1">
+                                        <div class="movie-card__meta d-flex flex-wrap align-items-center gap-2 mb-3">
                                             <?php if ( '' !== $release_date ) : ?>
-                                                <span><?php echo esc_html( $release_date ); ?></span>
+                                                <span class="movie-card__meta-item badge rounded-pill text-body-secondary fw-semibold">
+                                                    <?php echo esc_html( $release_date ); ?>
+                                                </span>
                                             <?php endif; ?>
                                             <?php if ( $vote_average > 0 ) : ?>
-                                                <span class="ms-2">&#9733; <?php echo esc_html( number_format_i18n( $vote_average, 1 ) ); ?>/10</span>
+                                                <span class="movie-card__rating badge rounded-pill">
+                                                    &#9733; <?php echo esc_html( number_format_i18n( $vote_average, 1 ) ); ?>/10
+                                                </span>
                                             <?php endif; ?>
                                         </div>
                                         <?php if ( ! empty( $genre_names ) ) : ?>
-                                            <div class="small text-muted">
-                                                <?php echo esc_html( implode( ', ', $genre_names ) ); ?>
-                                            </div>
+                                            <ul class="movie-card__genres list-unstyled d-flex flex-wrap gap-2 mb-0">
+                                                <?php foreach ( $genre_names as $genre_name ) : ?>
+                                                    <li class="movie-card__genre badge rounded-pill bg-light text-secondary fw-semibold"><?php echo esc_html( $genre_name ); ?></li>
+                                                <?php endforeach; ?>
+                                            </ul>
                                         <?php endif; ?>
                                     </div>
-                                </div>
-                            </li>
+                                </article>
+                            </div>
                             <?php
                         endwhile;
                         wp_reset_postdata();
                         ?>
-                    </ul>
+                    </div>
                 </section>
             <?php elseif ( post_type_exists( 'movie' ) ) : ?>
                 <div class="alert alert-info mb-5">
@@ -139,35 +149,40 @@ $blog_query = new WP_Query(
 
             <?php if ( $blog_query->have_posts() ) : ?>
                 <section class="mb-4">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="section-heading d-flex align-items-center justify-content-between mb-3">
                         <h2 class="h4 fw-semibold mb-0"><?php esc_html_e( 'Aktuální články', 'tmdb-theme' ); ?></h2>
                         <?php if ( '' !== $blog_link ) : ?>
-                            <a class="link-primary" href="<?php echo esc_url( $blog_link ); ?>"><?php esc_html_e( 'Blog', 'tmdb-theme' ); ?></a>
+                            <a class="link-primary fw-semibold" href="<?php echo esc_url( $blog_link ); ?>"><?php esc_html_e( 'Blog', 'tmdb-theme' ); ?></a>
                         <?php endif; ?>
                     </div>
-                    <ul class="list-group list-group-flush">
+                    <div class="blog-grid row row-cols-1 row-cols-md-2 g-4">
                         <?php
                         while ( $blog_query->have_posts() ) :
                             $blog_query->the_post();
                             ?>
-                            <li class="list-group-item">
-                                <article id="post-<?php the_ID(); ?>" <?php post_class( 'd-flex flex-column flex-sm-row gap-3 align-items-sm-center' ); ?>>
-                                    <div class="flex-grow-1">
-                                        <h3 class="h5 mb-1">
+                            <div class="col">
+                                <article id="post-<?php the_ID(); ?>" <?php post_class( 'blog-card card h-100 border-0 shadow-sm' ); ?>>
+                                    <?php if ( has_post_thumbnail() ) : ?>
+                                        <a class="blog-card__thumbnail" href="<?php the_permalink(); ?>">
+                                            <?php the_post_thumbnail( 'large', array( 'class' => 'card-img-top object-fit-cover', 'loading' => 'lazy' ) ); ?>
+                                        </a>
+                                    <?php endif; ?>
+                                    <div class="card-body d-flex flex-column">
+                                        <div class="small text-muted mb-2"><?php echo esc_html( get_the_date() ); ?></div>
+                                        <h3 class="h5 card-title mb-2">
                                             <a class="stretched-link text-reset text-decoration-none" href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
                                         </h3>
-                                        <div class="small text-muted mb-2"><?php echo esc_html( get_the_date() ); ?></div>
-                                        <div class="mb-0 text-muted">
-                                            <?php the_excerpt(); ?>
-                                        </div>
+                                        <p class="card-text text-muted mb-0">
+                                            <?php echo wp_kses_post( wp_trim_words( get_the_excerpt(), 24 ) ); ?>
+                                        </p>
                                     </div>
                                 </article>
-                            </li>
+                            </div>
                             <?php
                         endwhile;
                         wp_reset_postdata();
                         ?>
-                    </ul>
+                    </div>
                 </section>
             <?php else : ?>
                 <div class="alert alert-info">
