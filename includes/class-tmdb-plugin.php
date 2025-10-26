@@ -72,6 +72,109 @@ class TMDB_Plugin {
 
         add_filter( 'template_include', [ $this, 'filter_template_include' ], PHP_INT_MAX );
         add_filter( 'comments_template', [ $this, 'filter_comments_template' ], PHP_INT_MAX );
+
+        add_action( 'init', [ $this, 'disable_wp_emojis' ] );
+        add_action( 'init', [ $this, 'disable_global_styles_assets' ] );
+        add_action( 'init', [ $this, 'disable_speculation_rules_assets' ] );
+
+        add_action( 'wp_enqueue_scripts', [ $this, 'dequeue_global_styles_assets' ], PHP_INT_MAX );
+        add_action( 'wp_enqueue_scripts', [ $this, 'dequeue_speculation_rules_assets' ], PHP_INT_MAX );
+    }
+
+    /**
+     * Disables the WordPress emoji loader and related assets.
+     */
+    public function disable_wp_emojis(): void {
+        remove_action( 'wp_head', 'print_emoji_detection_script', 7 );
+        remove_action( 'admin_print_scripts', 'print_emoji_detection_script' );
+        remove_action( 'wp_print_styles', 'print_emoji_styles' );
+        remove_action( 'admin_print_styles', 'print_emoji_styles' );
+
+        remove_filter( 'the_content_feed', 'wp_staticize_emoji' );
+        remove_filter( 'comment_text_rss', 'wp_staticize_emoji' );
+        remove_filter( 'wp_mail', 'wp_staticize_emoji_for_email' );
+
+        add_filter( 'tiny_mce_plugins', [ $this, 'disable_emojis_in_tinymce' ] );
+        add_filter( 'wp_resource_hints', [ $this, 'disable_emojis_dns_prefetch' ], 10, 2 );
+    }
+
+    /**
+     * Ensures the emoji TinyMCE plugin is not loaded.
+     *
+     * @param mixed $plugins TinyMCE plugins.
+     *
+     * @return array
+     */
+    public function disable_emojis_in_tinymce( $plugins ): array {
+        if ( is_array( $plugins ) ) {
+            return array_values( array_diff( $plugins, [ 'wpemoji' ] ) );
+        }
+
+        return [];
+    }
+
+    /**
+     * Removes the emoji DNS prefetch hint.
+     *
+     * @param string[] $urls          Resource hint URLs.
+     * @param string   $relation_type Relation type for the resource hints.
+     *
+     * @return string[]
+     */
+    public function disable_emojis_dns_prefetch( array $urls, string $relation_type ): array {
+        if ( 'dns-prefetch' !== $relation_type ) {
+            return $urls;
+        }
+
+        $emoji_svg_url = apply_filters( 'emoji_svg_url', 'https://s.w.org/images/core/emoji/15.2.0/svg/' );
+
+        return array_values( array_diff( $urls, [ $emoji_svg_url ] ) );
+    }
+
+    /**
+     * Prevents the global styles inline CSS and SVG filters from loading.
+     */
+    public function disable_global_styles_assets(): void {
+        if ( function_exists( 'wp_enqueue_global_styles' ) ) {
+            remove_action( 'wp_enqueue_scripts', 'wp_enqueue_global_styles' );
+            remove_action( 'enqueue_block_assets', 'wp_enqueue_global_styles' );
+        }
+
+        if ( function_exists( 'wp_global_styles_render_svg_filters' ) ) {
+            remove_action( 'wp_body_open', 'wp_global_styles_render_svg_filters' );
+            remove_action( 'wp_head', 'wp_global_styles_render_svg_filters' );
+        }
+    }
+
+    /**
+     * Dequeues the global styles stylesheet if it was registered before the removal hooks ran.
+     */
+    public function dequeue_global_styles_assets(): void {
+        wp_dequeue_style( 'global-styles' );
+        wp_deregister_style( 'global-styles' );
+    }
+
+    /**
+     * Removes the Speculation Rules feature from the front end.
+     */
+    public function disable_speculation_rules_assets(): void {
+        if ( function_exists( 'wp_enqueue_speculation_rules' ) ) {
+            remove_action( 'wp_enqueue_scripts', 'wp_enqueue_speculation_rules' );
+            remove_action( 'enqueue_block_assets', 'wp_enqueue_speculation_rules' );
+        }
+
+        if ( function_exists( 'wp_print_speculation_rules' ) ) {
+            remove_action( 'wp_head', 'wp_print_speculation_rules', 1 );
+            remove_action( 'wp_footer', 'wp_print_speculation_rules', 1 );
+        }
+    }
+
+    /**
+     * Dequeues the Speculation Rules script if it was registered before the removal hooks ran.
+     */
+    public function dequeue_speculation_rules_assets(): void {
+        wp_dequeue_script( 'speculation-rules' );
+        wp_deregister_script( 'speculation-rules' );
     }
 
     /**
