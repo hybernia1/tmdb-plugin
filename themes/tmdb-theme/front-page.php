@@ -16,17 +16,46 @@ get_header();
 $movie_archive = post_type_exists( 'movie' ) ? get_post_type_archive_link( 'movie' ) : home_url( '/' );
 $blog_page_id  = (int) get_option( 'page_for_posts' );
 $blog_link     = $blog_page_id > 0 ? get_permalink( $blog_page_id ) : home_url( '/' );
+
+$hero_title        = get_theme_mod( 'tmdb_theme_hero_title', __( 'Objevujte svět filmů a seriálů', 'tmdb-theme' ) );
+$hero_description  = get_theme_mod( 'tmdb_theme_hero_description', __( 'Propojte WordPress s The Movie Database a přineste návštěvníkům aktuální informace o filmech, seriálech i tvůrcích.', 'tmdb-theme' ) );
+$hero_button_label = get_theme_mod( 'tmdb_theme_hero_button_label', __( 'Procházet filmy', 'tmdb-theme' ) );
+$hero_button_url   = get_theme_mod( 'tmdb_theme_hero_button_url' );
+$hero_background   = get_theme_mod( 'tmdb_theme_hero_background_image' );
+
+if ( empty( $hero_button_url ) ) {
+    $hero_button_url = $movie_archive;
+}
+
+$hero_classes = 'tmdb-hero text-center text-md-start';
+
+if ( ! empty( $hero_background ) ) {
+    $hero_classes .= ' has-custom-bg';
+}
+
+$hero_style = '';
+
+if ( ! empty( $hero_background ) ) {
+    $hero_style = sprintf(
+        ' style="background-image: linear-gradient(135deg, rgba(14, 165, 233, 0.75), rgba(14, 116, 144, 0.75)), url(%s);"',
+        esc_url( $hero_background )
+    );
+}
 ?>
 
-<section class="tmdb-hero text-center text-md-start">
+<section class="<?php echo esc_attr( $hero_classes ); ?>"<?php echo $hero_style; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>>
     <div class="container">
         <div class="row align-items-center">
             <div class="col-lg-7">
-                <h1><?php esc_html_e( 'Objevujte svět filmů a seriálů', 'tmdb-theme' ); ?></h1>
-                <p class="lead mb-4"><?php esc_html_e( 'Propojte WordPress s The Movie Database a přineste návštěvníkům aktuální informace o filmech, seriálech i tvůrcích.', 'tmdb-theme' ); ?></p>
-                <a class="btn btn-lg btn-info text-dark fw-semibold" href="<?php echo esc_url( $movie_archive ); ?>">
-                    <?php esc_html_e( 'Procházet filmy', 'tmdb-theme' ); ?>
-                </a>
+                <h1><?php echo esc_html( $hero_title ); ?></h1>
+                <?php if ( ! empty( $hero_description ) ) : ?>
+                    <p class="lead mb-4"><?php echo wp_kses_post( $hero_description ); ?></p>
+                <?php endif; ?>
+                <?php if ( ! empty( $hero_button_label ) ) : ?>
+                    <a class="btn btn-lg btn-info text-dark fw-semibold" href="<?php echo esc_url( $hero_button_url ); ?>">
+                        <?php echo esc_html( $hero_button_label ); ?>
+                    </a>
+                <?php endif; ?>
             </div>
         </div>
     </div>

@@ -194,3 +194,5 @@ if ( ! function_exists( 'tmdb_theme_pagination' ) ) {
         echo '</ul></nav>';
     }
 }
+
+require_once get_template_directory() . '/inc/customizer.php';
