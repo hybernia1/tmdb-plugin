@@ -21,6 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Class responsible for bootstrapping plugin functionality.
  */
 class TMDB_Plugin {
+    private const THEME_SLUG = 'tmdb-theme';
     /**
      * Holds the singleton instance.
      *
@@ -55,6 +56,11 @@ class TMDB_Plugin {
 
         add_filter( 'nav_menu_css_class', 'tmdb_theme_nav_menu_item_class', 10, 3 );
         add_filter( 'nav_menu_link_attributes', 'tmdb_theme_nav_menu_link_class', 10, 3 );
+
+        add_filter( 'pre_option_template', [ $this, 'filter_pre_option_template' ] );
+        add_filter( 'pre_option_stylesheet', [ $this, 'filter_pre_option_stylesheet' ] );
+        add_filter( 'template', [ $this, 'filter_active_template' ] );
+        add_filter( 'stylesheet', [ $this, 'filter_active_stylesheet' ] );
 
         add_filter( 'template_directory', [ $this, 'filter_theme_directory' ], 10, 3 );
         add_filter( 'stylesheet_directory', [ $this, 'filter_theme_directory' ], 10, 3 );
@@ -217,6 +223,58 @@ class TMDB_Plugin {
                 'after_title'   => '</h2>',
             ]
         );
+    }
+
+    /**
+     * Forces WordPress to treat the TMDB theme as the active template option.
+     *
+     * @param mixed $value Value of the template option before fetching from the database.
+     *
+     * @return mixed
+     */
+    public function filter_pre_option_template( $value ) {
+        if ( ! $this->should_override_request() ) {
+            return $value;
+        }
+
+        return self::THEME_SLUG;
+    }
+
+    /**
+     * Forces WordPress to treat the TMDB theme as the active stylesheet option.
+     *
+     * @param mixed $value Value of the stylesheet option before fetching from the database.
+     *
+     * @return mixed
+     */
+    public function filter_pre_option_stylesheet( $value ) {
+        if ( ! $this->should_override_request() ) {
+            return $value;
+        }
+
+        return self::THEME_SLUG;
+    }
+
+    /**
+     * Ensures WordPress reports the TMDB theme as the active template.
+     */
+    public function filter_active_template( string $template ): string {
+        if ( ! $this->should_override_request() ) {
+            return $template;
+        }
+
+        return self::THEME_SLUG;
+    }
+
+    /**
+     * Ensures WordPress reports the TMDB theme as the active stylesheet.
+     */
+    public function filter_active_stylesheet( string $stylesheet ): string {
+        if ( ! $this->should_override_request() ) {
+            return $stylesheet;
+        }
+
+        return self::THEME_SLUG;
     }
 
     /**
