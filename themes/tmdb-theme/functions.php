@@ -168,6 +168,63 @@ function tmdb_theme_disable_block_assets(): void {
 }
 add_action( 'wp_enqueue_scripts', 'tmdb_theme_disable_block_assets', 100 );
 
+if ( ! function_exists( 'tmdb_theme_filter_recursive' ) ) {
+    /**
+     * Recursively removes empty values from an array.
+     *
+     * @param array<mixed> $data The data to filter.
+     *
+     * @return array<mixed>
+     */
+    function tmdb_theme_filter_recursive( array $data ): array {
+        foreach ( $data as $key => $value ) {
+            if ( is_array( $value ) ) {
+                $value = tmdb_theme_filter_recursive( $value );
+
+                if ( empty( $value ) ) {
+                    unset( $data[ $key ] );
+                } else {
+                    $data[ $key ] = $value;
+                }
+            } elseif ( null === $value ) {
+                unset( $data[ $key ] );
+            } elseif ( is_string( $value ) && '' === trim( $value ) ) {
+                unset( $data[ $key ] );
+            }
+        }
+
+        return $data;
+    }
+}
+
+if ( ! function_exists( 'tmdb_theme_render_seo_template' ) ) {
+    /**
+     * Safely loads an SEO template partial from the theme.
+     */
+    function tmdb_theme_render_seo_template( string $template ): void {
+        $template_path = trailingslashit( get_template_directory() ) . 'seo/' . ltrim( $template, '/' );
+
+        if ( is_readable( $template_path ) ) {
+            include $template_path;
+        }
+    }
+}
+
+/**
+ * Outputs contextual SEO metadata for TMDB content types.
+ */
+function tmdb_theme_output_contextual_seo(): void {
+    if ( is_singular( 'movie' ) ) {
+        tmdb_theme_render_seo_template( 'single-movie.php' );
+        return;
+    }
+
+    if ( is_post_type_archive( 'movie' ) ) {
+        tmdb_theme_render_seo_template( 'archive-movie.php' );
+    }
+}
+add_action( 'wp_head', 'tmdb_theme_output_contextual_seo', 1 );
+
 /**
  * Outputs Bootstrap-friendly pagination markup.
  */
