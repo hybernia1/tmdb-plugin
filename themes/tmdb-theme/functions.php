@@ -106,20 +106,22 @@ add_action( 'widgets_init', 'tmdb_theme_widgets_init' );
  *
  * @return string[]
  */
-function tmdb_theme_nav_menu_item_class( $classes, $item, $args ) {
-    if ( ! isset( $args->theme_location ) ) {
+if ( ! function_exists( 'tmdb_theme_nav_menu_item_class' ) ) {
+    function tmdb_theme_nav_menu_item_class( $classes, $item, $args ) {
+        if ( ! isset( $args->theme_location ) ) {
+            return $classes;
+        }
+
+        if ( 'primary' === $args->theme_location ) {
+            $classes[] = 'nav-item';
+        }
+
+        if ( 'footer' === $args->theme_location ) {
+            $classes[] = 'nav-item';
+        }
+
         return $classes;
     }
-
-    if ( 'primary' === $args->theme_location ) {
-        $classes[] = 'nav-item';
-    }
-
-    if ( 'footer' === $args->theme_location ) {
-        $classes[] = 'nav-item';
-    }
-
-    return $classes;
 }
 add_filter( 'nav_menu_css_class', 'tmdb_theme_nav_menu_item_class', 10, 3 );
 
@@ -132,59 +134,63 @@ add_filter( 'nav_menu_css_class', 'tmdb_theme_nav_menu_item_class', 10, 3 );
  *
  * @return array
  */
-function tmdb_theme_nav_menu_link_class( $atts, $item, $args ) {
-    if ( ! isset( $args->theme_location ) ) {
+if ( ! function_exists( 'tmdb_theme_nav_menu_link_class' ) ) {
+    function tmdb_theme_nav_menu_link_class( $atts, $item, $args ) {
+        if ( ! isset( $args->theme_location ) ) {
+            return $atts;
+        }
+
+        if ( 'primary' === $args->theme_location ) {
+            $atts['class'] = isset( $atts['class'] ) ? $atts['class'] . ' nav-link' : 'nav-link';
+        }
+
+        if ( 'footer' === $args->theme_location ) {
+            $atts['class'] = isset( $atts['class'] ) ? $atts['class'] . ' nav-link px-2 text-muted' : 'nav-link px-2 text-muted';
+        }
+
         return $atts;
     }
-
-    if ( 'primary' === $args->theme_location ) {
-        $atts['class'] = isset( $atts['class'] ) ? $atts['class'] . ' nav-link' : 'nav-link';
-    }
-
-    if ( 'footer' === $args->theme_location ) {
-        $atts['class'] = isset( $atts['class'] ) ? $atts['class'] . ' nav-link px-2 text-muted' : 'nav-link px-2 text-muted';
-    }
-
-    return $atts;
 }
 add_filter( 'nav_menu_link_attributes', 'tmdb_theme_nav_menu_link_class', 10, 3 );
 
 /**
  * Outputs Bootstrap-friendly pagination markup.
  */
-function tmdb_theme_pagination(): void {
-    $links = paginate_links(
-        array(
-            'type'      => 'array',
-            'mid_size'  => 2,
-            'prev_text' => __( '&laquo; Previous', 'tmdb-theme' ),
-            'next_text' => __( 'Next &raquo;', 'tmdb-theme' ),
-        )
-    );
+if ( ! function_exists( 'tmdb_theme_pagination' ) ) {
+    function tmdb_theme_pagination(): void {
+        $links = paginate_links(
+            array(
+                'type'      => 'array',
+                'mid_size'  => 2,
+                'prev_text' => __( '&laquo; Previous', 'tmdb-theme' ),
+                'next_text' => __( 'Next &raquo;', 'tmdb-theme' ),
+            )
+        );
 
-    if ( empty( $links ) ) {
-        return;
-    }
-
-    echo '<nav class="tmdb-pagination" aria-label="' . esc_attr__( 'Pagination', 'tmdb-theme' ) . '"><ul class="pagination justify-content-center gap-2">';
-
-    foreach ( $links as $link ) {
-        $item_class = 'page-item';
-
-        if ( false !== strpos( $link, 'current' ) ) {
-            $item_class .= ' active';
+        if ( empty( $links ) ) {
+            return;
         }
 
-        if ( false !== strpos( $link, 'dots' ) ) {
-            $item_class .= ' disabled';
+        echo '<nav class="tmdb-pagination" aria-label="' . esc_attr__( 'Pagination', 'tmdb-theme' ) . '"><ul class="pagination justify-content-center gap-2">';
+
+        foreach ( $links as $link ) {
+            $item_class = 'page-item';
+
+            if ( false !== strpos( $link, 'current' ) ) {
+                $item_class .= ' active';
+            }
+
+            if ( false !== strpos( $link, 'dots' ) ) {
+                $item_class .= ' disabled';
+            }
+
+            $link = str_replace( 'page-numbers', 'page-link', $link );
+            $link = str_replace( 'page-link current', 'page-link active', $link );
+            $link = str_replace( 'page-link dots', 'page-link disabled', $link );
+
+            echo '<li class="' . esc_attr( trim( $item_class ) ) . '">' . wp_kses_post( $link ) . '</li>';
         }
 
-        $link = str_replace( 'page-numbers', 'page-link', $link );
-        $link = str_replace( 'page-link current', 'page-link active', $link );
-        $link = str_replace( 'page-link dots', 'page-link disabled', $link );
-
-        echo '<li class="' . esc_attr( trim( $item_class ) ) . '">' . wp_kses_post( $link ) . '</li>';
+        echo '</ul></nav>';
     }
-
-    echo '</ul></nav>';
 }
