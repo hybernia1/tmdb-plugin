@@ -78,28 +78,33 @@ class TMDB_Plugin {
      * Registers the bundled theme directory so WordPress recognises the TMDB theme.
      */
     public function register_bundled_theme(): void {
-        $theme_root  = wp_normalize_path( dirname( $this->get_theme_directory() ) );
-        $content_dir = trailingslashit( wp_normalize_path( WP_CONTENT_DIR ) );
+        $theme_root = untrailingslashit( wp_normalize_path( dirname( $this->get_theme_directory() ) ) );
 
-        if ( 0 !== strpos( $theme_root, $content_dir ) ) {
+        if ( ! is_dir( $theme_root ) ) {
             return;
         }
-
-        $relative_theme_directory = untrailingslashit( substr( $theme_root, strlen( $content_dir ) ) );
 
         global $wp_theme_directories;
 
-        $registered_directories = array_map( 'wp_normalize_path', (array) $wp_theme_directories );
-        $target_directory       = wp_normalize_path( WP_CONTENT_DIR . '/' . $relative_theme_directory );
+        $registered_directories = array_map(
+            static function ( $directory ): string {
+                return untrailingslashit( wp_normalize_path( $directory ) );
+            },
+            (array) $wp_theme_directories
+        );
 
-        if ( in_array( $target_directory, $registered_directories, true ) ) {
+        if ( in_array( $theme_root, $registered_directories, true ) ) {
             return;
         }
 
-        register_theme_directory( $relative_theme_directory );
+        register_theme_directory( $theme_root );
 
         if ( function_exists( 'wp_clean_themes_cache' ) ) {
             wp_clean_themes_cache();
+        }
+
+        if ( function_exists( 'wp_get_theme' ) ) {
+            wp_get_theme( self::THEME_SLUG );
         }
     }
 
