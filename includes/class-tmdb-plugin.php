@@ -44,6 +44,7 @@ class TMDB_Plugin {
      * Initialises hooks for the plugin.
      */
     public function init(): void {
+        add_action( 'plugins_loaded', [ $this, 'register_bundled_theme' ] );
         add_action( 'init', [ TMDB_Post_Types::class, 'register' ] );
         add_action( 'init', [ TMDB_Taxonomies::class, 'register' ] );
         add_action( 'add_meta_boxes', [ TMDB_Meta_Boxes::class, 'register' ] );
@@ -71,6 +72,36 @@ class TMDB_Plugin {
 
         add_filter( 'template_include', [ $this, 'filter_template_include' ], PHP_INT_MAX );
         add_filter( 'comments_template', [ $this, 'filter_comments_template' ], PHP_INT_MAX );
+    }
+
+    /**
+     * Registers the bundled theme directory so WordPress recognises the TMDB theme.
+     */
+    public function register_bundled_theme(): void {
+        $theme_directory = wp_normalize_path( $this->get_theme_directory() );
+        $content_dir     = wp_normalize_path( WP_CONTENT_DIR );
+        $content_dir     = trailingslashit( $content_dir );
+
+        if ( 0 !== strpos( $theme_directory, $content_dir ) ) {
+            return;
+        }
+
+        $relative_theme_directory = untrailingslashit( substr( $theme_directory, strlen( $content_dir ) ) );
+
+        global $wp_theme_directories;
+
+        $registered_directories = array_map( 'wp_normalize_path', (array) $wp_theme_directories );
+        $target_directory       = wp_normalize_path( WP_CONTENT_DIR . '/' . $relative_theme_directory );
+
+        if ( in_array( $target_directory, $registered_directories, true ) ) {
+            return;
+        }
+
+        register_theme_directory( $relative_theme_directory );
+
+        if ( function_exists( 'wp_clean_themes_cache' ) ) {
+            wp_clean_themes_cache();
+        }
     }
 
     /**
