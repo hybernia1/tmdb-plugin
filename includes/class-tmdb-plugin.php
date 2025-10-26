@@ -78,15 +78,14 @@ class TMDB_Plugin {
      * Registers the bundled theme directory so WordPress recognises the TMDB theme.
      */
     public function register_bundled_theme(): void {
-        $theme_directory = wp_normalize_path( $this->get_theme_directory() );
-        $content_dir     = wp_normalize_path( WP_CONTENT_DIR );
-        $content_dir     = trailingslashit( $content_dir );
+        $theme_root  = wp_normalize_path( dirname( $this->get_theme_directory() ) );
+        $content_dir = trailingslashit( wp_normalize_path( WP_CONTENT_DIR ) );
 
-        if ( 0 !== strpos( $theme_directory, $content_dir ) ) {
+        if ( 0 !== strpos( $theme_root, $content_dir ) ) {
             return;
         }
 
-        $relative_theme_directory = untrailingslashit( substr( $theme_directory, strlen( $content_dir ) ) );
+        $relative_theme_directory = untrailingslashit( substr( $theme_root, strlen( $content_dir ) ) );
 
         global $wp_theme_directories;
 
