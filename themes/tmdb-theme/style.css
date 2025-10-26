@@ -199,6 +199,168 @@ footer.site-footer a:hover {
     position: relative;
 }
 
+.movie-detail.card {
+    overflow: hidden;
+}
+
+.tmdb-hero {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.05), rgba(37, 99, 235, 0.08));
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.tmdb-hero-poster {
+    background-color: #0f172a;
+}
+
+.tmdb-hero-poster-img {
+    object-fit: cover;
+}
+
+.tmdb-hero-header .lead {
+    color: #475569;
+}
+
+.tmdb-hero-meta {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.tmdb-hero-meta-item {
+    padding: 0.85rem 1rem;
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 0.5rem 1.25rem rgba(15, 23, 42, 0.08);
+}
+
+.tmdb-hero-meta-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #64748b;
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.tmdb-hero-meta-value {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.tmdb-hero-genres .badge,
+.tmdb-hero-genres .tmdb-genre-badge {
+    background: rgba(37, 99, 235, 0.15);
+    color: #1e3a8a;
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    font-weight: 600;
+}
+
+.tmdb-score-card {
+    background: linear-gradient(135deg, #991b1b, #dc2626);
+    color: #ffffff;
+    padding: 2rem 1.5rem;
+    border-radius: 1.25rem;
+    box-shadow: 0 1.5rem 3rem rgba(220, 38, 38, 0.25);
+}
+
+.tmdb-score-card--empty {
+    background: linear-gradient(135deg, #475569, #0f172a);
+    box-shadow: 0 1rem 2rem rgba(15, 23, 42, 0.2);
+}
+
+.tmdb-score-circle {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.16);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.tmdb-score-value {
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1;
+}
+
+.tmdb-score-subtitle {
+    font-size: 0.75rem;
+    letter-spacing: 0.24em;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.tmdb-score-average {
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.tmdb-score-count {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.9rem;
+}
+
+.tmdb-external-heading {
+    color: #0f172a;
+}
+
+.tmdb-hero-side .tmdb-external-heading {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.tmdb-external-badge {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    text-transform: none;
+    min-width: 120px;
+}
+
+.tmdb-hero-side .tmdb-external-badge {
+    color: #ffffff;
+}
+
+.tmdb-external-badge:hover,
+.tmdb-external-badge:focus {
+    background: rgba(255, 255, 255, 0.2);
+    color: inherit;
+}
+
+.tmdb-external-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.tmdb-external-value {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.tmdb-hero-trailer {
+    border-radius: 1rem;
+}
+
+@media (min-width: 768px) {
+    .tmdb-hero-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1200px) {
+    .tmdb-hero-meta {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
 .movie-list-poster {
     width: 92px;
     height: 138px;
